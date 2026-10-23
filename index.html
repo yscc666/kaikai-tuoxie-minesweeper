@@ -1043,6 +1043,8 @@
     }
 
     .cell .slipper-icon {
+      width: 96%;
+      height: 96%;
       animation: softPop .28s ease-out both;
     }
 
@@ -3363,17 +3365,40 @@
         <circle cx="43.4" cy="38.8" r=".7" fill="#FFFFFF" opacity=".75"/>
       </symbol>
 
-      <symbol id="icon-slipper" viewBox="0 0 64 64">
-        <g transform="rotate(-12 32 32)">
-          <!-- 侧面的拖鞋鞋底：厚实、圆润、带奶白描边 -->
-          <path d="M9 41c1-5.5 5.5-9 11.5-9h23c6 0 10.5 3.5 11.5 9l.7 3.2c1 4.5-2.8 8.3-7.4 8.3H17.1c-4.6 0-8.4-3.8-7.4-8.3Z" fill="#C98E87" stroke="#FFF9F1" stroke-width="3.4" stroke-linejoin="round"/>
-          <!-- 半包住脚背的软鞋面，露脚跟，更像居家小拖鞋 -->
-          <path d="M18 41c0-10 6-17 15-17 7.5 0 12.5 5 14.5 13.5-4 2.8-7.7 2.9-11.5.6-2.3-1.4-4.6-1.3-7 .2-3.4 2.2-7 3.1-11 2.7Z" fill="#D59A93" stroke="#FFF9F1" stroke-width="3.4" stroke-linejoin="round"/>
-          <!-- 鞋口的奶白软边 & 深一点的脚背内里 -->
-          <path d="M19.5 40.5c3.5-.6 6.2.4 9 2.1 3.8 2.2 7.8 2.2 11.6.2 1.5-.8 3.1-1.2 4.7-1.4" fill="none" stroke="#FFF9F1" stroke-width="3" stroke-linecap="round"/>
-          <path d="M25 36.2c2.4-4 7-5 10.3-2.4 2.5 2 3.8 4.3 4.5 7-3.2 1.6-6.4 1.5-9.7-.2-1.7-.8-3.4-.8-5.1-.2Z" fill="#A96D67"/>
-          <!-- 鞋头高光 -->
-          <path d="M41.8 30.1c1.3 1.5 2.1 3.4 2.4 5.5" fill="none" stroke="#F6D2CD" stroke-width="2.4" stroke-linecap="round" opacity=".85"/>
+      <symbol id="icon-slipper" viewBox="4 20 56 38">
+        <g transform="rotate(-3 32 34)">
+          <!-- 厚实圆润的樱花粉鞋底，让鞋身看起来软乎乎、有体积 -->
+          <path d="M12 44H53C55.5 44 56.5 46 56.5 48.5C56.5 52.5 54 56.5 50 56.5H15C11 56.5 8.5 52.5 8.5 48.5C8.5 46 9.5 44 12 44Z" fill="#D98F98" stroke="#FFF9F1" stroke-width="3.2" stroke-linejoin="round"/>
+
+          <!-- 鞋口内的软脚床，藏在鞋面后面 -->
+          <path d="M34 30C36.2 29.2 38.8 30.2 40.6 32C42.4 33.8 43.6 36.2 45.2 38C46.6 39.6 48.2 39.4 49.4 38L50 44H33.8Z" fill="#B96F7A"/>
+          <path d="M34 41.6C37 43.2 41 43.8 45 43.2L50 44H33.8Z" fill="#A85F6A" opacity=".5"/>
+          <path d="M35.4 30.8C37.2 30.2 39.2 30.8 40.8 32.4" fill="none" stroke="#D8EAF2" stroke-width="2.2" stroke-linecap="round" opacity=".95"/>
+
+          <!-- 圆鼓鼓的鞋面，鞋头厚、鞋口低，露出圆润后跟 -->
+          <path d="M10 45.5C9 39.5 9.8 33.5 13.2 29.2C16.6 24.8 21.5 23 25.8 24.4C29.2 25.5 31.2 28 32.8 30.6C34.2 33.2 34.8 36.2 36.4 38.6C38.2 41.2 41.2 41.8 43.6 40.2C45.4 39 45.8 36.4 46.4 34C47 31.8 47.6 29.4 49.2 28.6C50.8 27.8 53 28.6 54 30.4C55 32.2 55 35 55 37C55 39.8 54.4 43.2 52.8 45.8C52 47.4 50.2 47.8 48.2 47.8H14C11.5 47.8 10.2 47 10 45.5Z" fill="#F5C3C7" stroke="#FFF9F1" stroke-width="3.2" stroke-linejoin="round"/>
+
+          <!-- 鞋面下缘的柔和暗面，增加软垫体积感 -->
+          <path d="M11.2 45.8C19.8 48.6 27.8 49.6 33.4 49.6C40.6 49.6 48.2 48.2 52.8 45.4C52.4 47.2 51.2 47.8 47.8 47.8H14C12.8 47.8 11.6 47.2 11.2 45.8Z" fill="#C97F89" opacity=".4"/>
+
+          <!-- 鞋口边缘的奶白软绒小卷边 -->
+          <g fill="#FFF8F0">
+            <circle cx="34.2" cy="30.2" r="2.3"/>
+            <circle cx="49.8" cy="29.2" r="2.3"/>
+            <circle cx="52.6" cy="31.4" r="2"/>
+          </g>
+
+          <!-- 爱心软垫：和鞋面同色系，压进鞋面里，而不是贴纸 -->
+          <path d="M19.8 39.8C18.3 38.6 16.2 36.9 16.2 35C16.2 33.6 17.1 32.6 18.3 32.6C19 32.6 19.5 33 19.8 33.6C20.1 33 20.6 32.6 21.3 32.6C22.5 32.6 23.4 33.6 23.4 35C23.4 36.9 21.3 38.6 19.8 39.8Z" fill="#B96F7A"/>
+          <path d="M17.8 34.8C17.9 34.3 18.2 33.9 18.7 33.7" fill="none" stroke="#F9D8D9" stroke-width="1.3" stroke-linecap="round"/>
+          <path d="M17.3 36.3C17.7 37.2 18.5 38 19.4 38.6" fill="none" stroke="#D68F98" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+
+          <!-- 鞋头柔光 + 后跟柔面 -->
+          <path d="M12.8 39.4C13.8 35.2 16.2 31.8 19.6 30" fill="none" stroke="#FBE0E0" stroke-width="2.5" stroke-linecap="round" opacity=".9"/>
+          <path d="M53.2 36C53.2 39.4 52.4 42.6 51 45.4" fill="none" stroke="#D99BA1" stroke-width="2" stroke-linecap="round" opacity=".4"/>
+
+          <!-- 极浅蓝鞋底点缀，和熊猫的蓝眼泪呼应 -->
+          <path d="M15.2 54.8H43.8" fill="none" stroke="#CFE4EE" stroke-width="1.5" stroke-linecap="round" opacity=".95"/>
         </g>
       </symbol>
 
