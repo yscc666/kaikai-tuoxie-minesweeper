@@ -1,0 +1,5239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="凯凯 × 拖鞋 的专属扫雷乐园：软乎乎的单机扫雷，以及可共享种子的竞速对战。">
+  <title>凯凯 × 拖鞋 的专属扫雷乐园</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23eaf5fa'/%3E%3Cpath d='M32 50S14 40 14 27c0-6 5-11 11-11 3.2 0 5.8 1.7 7 4.2 1.2-2.5 3.8-4.2 7-4.2 6 0 11 5 11 11 0 13-18 23-18 23Z' fill='%23d8a2a2'/%3E%3C/svg%3E">
+
+  <!--
+    纯原生单文件小游戏：
+    - 无框架、无外部字体、无 CDN、无广告、无外部跳转。
+    - 单机模式：随机雷盘，首点安全。
+    - 对战模式：同一串种子生成完全相同的雷盘；每个人独立计时。
+    - 纯前端无法跨设备实时通信，所以对战成绩支持两种同步方式：
+      1. 同一浏览器打开两个标签页时，用 BroadcastChannel 自动交换成绩；
+      2. 不同设备时，通过「战绩码」复制粘贴，自动比较用时并判定赢家。
+  -->
+
+  <style>
+    /* =========================================================
+       1. 配色变量 & 基础样式
+       ========================================================= */
+    :root {
+      /* 奶白主底、浅雾蓝信息色、樱花粉点缀，全部低饱和 */
+      --cream: #fffdfa;
+      --cream-strong: #ffffff;
+      --cream-deep: #fbf6f1;
+      --rose: #e9c0c4;
+      --rose-deep: #c8959b;
+      --rose-soft: #f9e6e9;
+      --rose-pale: #fdf5f7;
+      --peach: #f0e2d8;
+      --peach-soft: #f8f2ec;
+      --ink: #7b6c68;
+      --ink-soft: #9a8b87;
+      --ink-faint: #b6a9a4;
+      --line: #e6eef2;
+      --shadow-soft: 0 24px 70px rgba(150, 168, 178, .12);
+      --sky: #dcecf4;
+      --sky-soft: #f2f9fc;
+      --sky-deep: #9cb7c6;
+
+      /* 统一圆角：卡片大、容器中、按钮与格子小 */
+      --radius-card: 30px;
+      --radius-panel: 18px;
+      --radius-control: 14px;
+      --radius-chip: 10px;
+
+      --font-rounded: "Nunito", "Varela Round", "Avenir Next",
+        "Hiragino Maru Gothic ProN", "PingFang SC", "Microsoft YaHei",
+        "Hiragino Sans GB", sans-serif;
+      --font-num: "Arial Rounded MT Bold", "Trebuchet MS", "Nunito",
+        var(--font-rounded);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 280px;
+      min-height: 100%;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      overflow-x: hidden;
+      color: var(--ink);
+      background-color: #f8fbfe;
+      background-image:
+        radial-gradient(circle at 7% 6%, rgba(211, 235, 245, .78), transparent 30%),
+        radial-gradient(circle at 94% 13%, rgba(250, 232, 235, .5), transparent 27%),
+        radial-gradient(circle at 83% 88%, rgba(224, 242, 249, .7), transparent 32%),
+        radial-gradient(rgba(146, 181, 198, .15) 1px, transparent 1.2px);
+      background-size: auto, auto, auto, 26px 26px;
+      font-family: var(--font-rounded);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    summary:focus-visible {
+      outline: 2px solid var(--rose-deep);
+      outline-offset: 3px;
+    }
+
+    button:disabled {
+      cursor: default;
+    }
+
+    ::selection {
+      color: var(--ink);
+      background: #f4d7d3;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .svg-sprite {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .sr-only {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    /* =========================================================
+       2. 背景装饰 & 页面框架
+       ========================================================= */
+    .ambient {
+      position: fixed;
+      z-index: 0;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .ambient-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(2px);
+      opacity: .75;
+    }
+
+    .ambient-blob.blob-1 {
+      top: -120px;
+      left: -130px;
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(247, 221, 215, .8), transparent 68%);
+    }
+
+    .ambient-blob.blob-2 {
+      top: 26%;
+      right: -190px;
+      width: 470px;
+      height: 470px;
+      background: radial-gradient(circle, rgba(248, 229, 213, .72), transparent 68%);
+    }
+
+    .ambient-blob.blob-3 {
+      bottom: -180px;
+      left: 22%;
+      width: 420px;
+      height: 360px;
+      background: radial-gradient(circle, rgba(247, 225, 223, .55), transparent 70%);
+    }
+
+    .ambient-heart {
+      position: absolute;
+      color: rgba(221, 168, 162, .32);
+      animation: ambientFloat 8s ease-in-out infinite;
+    }
+
+    .ambient-heart svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .ambient-heart.heart-a {
+      top: 16%;
+      left: 5%;
+      width: 23px;
+      height: 23px;
+      transform: rotate(-12deg);
+    }
+
+    .ambient-heart.heart-b {
+      top: 62%;
+      right: 6%;
+      width: 16px;
+      height: 16px;
+      color: rgba(228, 186, 170, .4);
+      animation-delay: -2.7s;
+    }
+
+    .ambient-heart.heart-c {
+      bottom: 10%;
+      left: 12%;
+      width: 13px;
+      height: 13px;
+      color: rgba(223, 177, 174, .28);
+      animation-delay: -5s;
+    }
+
+    @keyframes ambientFloat {
+      0%, 100% { transform: translateY(0) rotate(-8deg); opacity: .65; }
+      50% { transform: translateY(-12px) rotate(4deg); opacity: 1; }
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: min(calc(100% - 32px), 820px);
+      margin: 0 auto;
+      padding: clamp(24px, 4.3vw, 44px) 0 22px;
+    }
+
+    /* =========================================================
+       3. 页头 / 标题 / 模式切换
+       ========================================================= */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: clamp(18px, 3vw, 26px);
+      text-align: center;
+    }
+
+    .hero-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 13px;
+    }
+
+    .badge-tile {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 250, 244, .9);
+      box-shadow:
+        0 8px 20px rgba(178, 139, 128, .13),
+        inset 0 1px 0 rgba(255, 255, 255, .9);
+    }
+
+    .badge-tile:first-child {
+      transform: rotate(-5deg);
+    }
+
+    .badge-tile:last-child {
+      background: var(--rose-soft);
+      transform: rotate(5deg);
+    }
+
+    .badge-tile svg {
+      display: block;
+      width: 27px;
+      height: 27px;
+    }
+
+    .badge-heart {
+      color: var(--rose-deep);
+      font-size: 13px;
+      line-height: 1;
+      opacity: .8;
+    }
+
+    .hero h1 {
+      max-width: 760px;
+      margin: 0;
+      color: #79635d;
+      font-size: clamp(24px, 4.1vw, 36px);
+      font-weight: 800;
+      letter-spacing: .015em;
+      line-height: 1.42;
+      text-wrap: balance;
+    }
+
+    .hero h1 .couple {
+      color: var(--rose-deep);
+      white-space: nowrap;
+    }
+
+    .hero h1 .x-mark {
+      margin: 0 .22em;
+      color: #c7a69c;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      line-height: 1.7;
+    }
+
+    .subtitle .sparkle {
+      display: inline-block;
+      margin-left: 2px;
+      color: #d8b47f;
+      font-size: 12px;
+    }
+
+    .mode-tabs {
+      display: inline-flex;
+      gap: 4px;
+      margin-top: 16px;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(246, 232, 225, .82);
+      box-shadow:
+        inset 0 1px 3px rgba(177, 138, 126, .08),
+        0 1px 0 rgba(255, 255, 255, .8);
+    }
+
+    .mode-tab {
+      min-width: 112px;
+      padding: 9px 18px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .035em;
+      line-height: 1;
+      transition:
+        color .18s ease,
+        background-color .18s ease,
+        box-shadow .18s ease,
+        transform .18s ease;
+    }
+
+    .mode-tab:hover {
+      color: var(--ink);
+      background: rgba(255, 250, 245, .55);
+    }
+
+    .mode-tab[aria-pressed="true"] {
+      background: var(--cream-strong);
+      color: var(--rose-deep);
+      box-shadow:
+        0 5px 14px rgba(186, 145, 135, .13),
+        inset 0 1px 0 #fff;
+    }
+
+    .mode-tab:active {
+      transform: scale(.98);
+    }
+
+    /* =========================================================
+       4. 主卡片
+       ========================================================= */
+    .game-card {
+      position: relative;
+      padding: clamp(16px, 3vw, 24px);
+      border: 1px solid rgba(255, 255, 255, .75);
+      border-radius: 32px;
+      background: rgba(255, 252, 247, .84);
+      box-shadow:
+        var(--shadow-soft),
+        inset 0 1px 0 rgba(255, 255, 255, .9);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+
+    /* =========================================================
+       5. 顶部状态：计时器 / 剩余地雷 / 重置
+       ========================================================= */
+    .game-top {
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .stat-card {
+      display: flex;
+      min-width: 152px;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 20px;
+      background: var(--peach-soft);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .85),
+        0 4px 12px rgba(177, 139, 127, .045);
+    }
+
+    .stat-card.mine-stat {
+      background: var(--rose-pale);
+      flex-direction: row-reverse;
+      text-align: right;
+    }
+
+    .stat-icon {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 251, 246, .85);
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 4px 9px rgba(184, 147, 135, .08);
+    }
+
+    .stat-icon svg {
+      display: block;
+      width: 24px;
+      height: 24px;
+    }
+
+    .stat-copy {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-label {
+      color: var(--ink-faint);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .stat-value {
+      color: #6f5953;
+      font-family: var(--font-num);
+      font-size: clamp(18px, 2.8vw, 22px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      letter-spacing: .035em;
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+
+    .stat-value.bump {
+      animation: numberBump .26s ease-out;
+    }
+
+    @keyframes numberBump {
+      0% { transform: scale(1); }
+      45% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    .reset-row {
+      display: flex;
+      justify-content: center;
+      margin: 12px 0 14px;
+    }
+
+    .reset-button {
+      position: relative;
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 17px;
+      border: 0;
+      border-radius: 999px;
+      background: #f8ebe5;
+      color: #9c7d75;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .85),
+        0 4px 12px rgba(183, 143, 131, .08);
+      cursor: pointer;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      line-height: 1;
+      transition:
+        background-color .2s ease,
+        color .2s ease,
+        box-shadow .2s ease,
+        transform .2s ease;
+    }
+
+    .reset-button:hover {
+      background: #edcbc6;
+      color: #765853;
+      transform: translateY(-1px);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .7),
+        0 8px 20px rgba(193, 143, 135, .22);
+    }
+
+    .reset-button:active {
+      transform: translateY(1px);
+    }
+
+    .reset-icon {
+      display: block;
+      width: 16px;
+      height: 16px;
+      color: currentColor;
+      transition: transform .4s ease;
+    }
+
+    .reset-button:hover .reset-icon {
+      transform: rotate(-180deg);
+    }
+
+    .reset-tooltip {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      z-index: 10;
+      padding: 5px 9px;
+      border-radius: 8px;
+      background: #7d6861;
+      color: #fffaf4;
+      box-shadow: 0 8px 20px rgba(117, 88, 81, .2);
+      font-size: 9.5px;
+      font-weight: 500;
+      letter-spacing: .03em;
+      line-height: 1.4;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 4px);
+      transition: opacity .18s ease, transform .18s ease;
+      white-space: nowrap;
+    }
+
+    .reset-tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: #7d6861;
+      transform: translate(-50%, -3px) rotate(45deg);
+      border-radius: 1px;
+    }
+
+    .reset-button:hover .reset-tooltip,
+    .reset-button:focus-visible .reset-tooltip {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    /* =========================================================
+       6. 对战模式面板
+       ========================================================= */
+    .battle-panel {
+      margin-bottom: 15px;
+      padding: 14px;
+      border-radius: 22px;
+      background: rgba(251, 240, 234, .8);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .86),
+        inset 0 -1px 0 rgba(229, 205, 195, .3);
+    }
+
+    .battle-panel:not([hidden]) {
+      animation: panelIn .26s ease both;
+    }
+
+    @keyframes panelIn {
+      0% { opacity: 0; transform: translateY(-4px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    .battle-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+    }
+
+    .identity-group {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .battle-label {
+      color: var(--ink-faint);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      white-space: nowrap;
+    }
+
+    .identity-options {
+      display: flex;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(255, 251, 246, .6);
+    }
+
+    .identity-chip {
+      padding: 5px 11px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 1.2;
+      transition: background-color .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+
+    .identity-chip:hover {
+      color: var(--ink);
+      background: rgba(255, 255, 255, .55);
+    }
+
+    .identity-chip[aria-pressed="true"] {
+      background: var(--rose-soft);
+      color: #8e625d;
+      box-shadow: 0 3px 8px rgba(187, 142, 134, .1);
+    }
+
+    .identity-chip:disabled {
+      opacity: .55;
+    }
+
+    .seed-current {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink-faint);
+      font-size: 9.5px;
+      white-space: nowrap;
+    }
+
+    .active-seed {
+      padding: 3px 8px;
+      border-radius: 8px;
+      background: rgba(255, 251, 247, .65);
+      color: #a4736c;
+      font-family: "Consolas", "SFMono-Regular", monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+    }
+
+    .battle-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .battle-btn {
+      min-height: 34px;
+      padding: 7px 12px;
+      border: 0;
+      border-radius: 12px;
+      background: rgba(255, 251, 247, .8);
+      color: var(--ink-soft);
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 3px 8px rgba(191, 153, 140, .07);
+      cursor: pointer;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      line-height: 1.2;
+      transition:
+        background-color .18s ease,
+        color .18s ease,
+        box-shadow .18s ease,
+        transform .18s ease;
+      white-space: nowrap;
+    }
+
+    .battle-btn:hover {
+      color: var(--ink);
+      background: #fffaf6;
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 6px 14px rgba(191, 153, 140, .12);
+      transform: translateY(-1px);
+    }
+
+    .battle-btn:active {
+      transform: translateY(1px);
+    }
+
+    .battle-btn.primary {
+      background: var(--rose-soft);
+      color: #87615b;
+    }
+
+    .battle-btn.primary:hover {
+      background: #f1d6d2;
+    }
+
+    .battle-btn:disabled {
+      opacity: .5;
+      transform: none;
+      box-shadow: inset 0 1px 0 #fff;
+    }
+
+    .seed-join {
+      display: flex;
+      min-width: 238px;
+      flex: 1 1 250px;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .seed-input {
+      width: 100%;
+      min-width: 0;
+      height: 34px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 12px;
+      background: rgba(255, 251, 247, .85);
+      color: var(--ink);
+      box-shadow:
+        inset 0 0 0 1px rgba(235, 217, 207, .9),
+        inset 0 1px 2px rgba(183, 143, 131, .06);
+      font-family: "Consolas", "SFMono-Regular", monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      outline: none;
+      text-transform: uppercase;
+      transition: box-shadow .18s ease, background-color .18s ease;
+    }
+
+    .seed-input::placeholder {
+      color: #b9a29a;
+      font-family: var(--font-rounded);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .seed-input:focus {
+      background: #fffdfa;
+      box-shadow:
+        inset 0 0 0 1.5px var(--rose),
+        0 0 0 3px rgba(232, 184, 179, .16);
+    }
+
+    .seed-input.is-error {
+      box-shadow:
+        inset 0 0 0 1.5px #dba39b,
+        0 0 0 3px rgba(219, 163, 155, .12);
+    }
+
+    .seed-feedback {
+      margin: 7px 2px 0;
+      color: #aa6c65;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    .battle-tip {
+      margin: 8px 2px 0;
+      color: var(--ink-faint);
+      font-size: 9.5px;
+      font-weight: 500;
+      letter-spacing: .02em;
+      line-height: 1.6;
+    }
+
+    .race-dock {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 13px;
+      background: rgba(253, 244, 240, .82);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
+    }
+
+    .race-dock-text {
+      color: #92766e;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    .race-dock-btn {
+      min-height: 26px;
+      padding: 5px 9px;
+      border: 0;
+      border-radius: 8px;
+      background: #f0d4d0;
+      color: #7e5b55;
+      cursor: pointer;
+      font-size: 9.5px;
+      font-weight: 700;
+      line-height: 1;
+      transition: background-color .18s ease, transform .18s ease;
+      white-space: nowrap;
+    }
+
+    .race-dock-btn:hover {
+      background: #e8c2bd;
+      transform: translateY(-1px);
+    }
+
+    /* =========================================================
+       7. 棋盘
+       ========================================================= */
+    .board-shell {
+      width: 100%;
+      padding: clamp(7px, 1.4vw, 10px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      border-radius: 26px;
+      background: linear-gradient(145deg, #f9ebe5, #f6e5de);
+      box-shadow:
+        inset 0 2px 9px rgba(176, 136, 124, .075),
+        inset 0 -1px 0 rgba(255, 255, 255, .78);
+      scrollbar-width: thin;
+      scrollbar-color: #d9b6ae #f6e5de;
+    }
+
+    .board-shell::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .board-shell::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .board-shell::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: #d9b6ae;
+      background-clip: padding-box;
+    }
+
+    .board {
+      --cell: 30px;
+      --gap: 4px;
+      display: grid;
+      width: max-content;
+      margin-inline: auto;
+      padding: 2px;
+      grid-template-columns: repeat(var(--cols, 20), var(--cell));
+      gap: var(--gap);
+    }
+
+    .cell {
+      position: relative;
+      display: grid;
+      width: var(--cell);
+      height: var(--cell);
+      padding: 0;
+      overflow: hidden;
+      place-items: center;
+      border: 0;
+      border-radius: clamp(5px, calc(var(--cell) * .32), 10px);
+      background: #fffbf7;
+      box-shadow:
+        0 2px 5px rgba(190, 149, 136, .14),
+        0 0 0 1px rgba(255, 255, 255, .32) inset;
+      color: var(--ink);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      transition:
+        transform .18s ease,
+        box-shadow .18s ease,
+        background-color .22s ease;
+    }
+
+    /* 未翻开格子的柔和覆盖层：翻开时淡出，不闪烁 */
+    .cell::before {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      border-radius: inherit;
+      background-color: #f3dbcf;
+      background-image: linear-gradient(150deg, rgba(255, 255, 255, .52), rgba(202, 150, 136, .045));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .65),
+        inset 0 -1px 0 rgba(196, 154, 142, .13);
+      opacity: 1;
+      transform: scale(1);
+      transition:
+        opacity .34s ease,
+        transform .34s ease,
+        background-color .2s ease;
+      pointer-events: none;
+    }
+
+    .cell.is-revealed {
+      background: #fffbf7;
+      box-shadow:
+        inset 0 0 0 1px rgba(238, 222, 211, .72),
+        0 1px 2px rgba(196, 163, 151, .035);
+      cursor: default;
+    }
+
+    .cell.is-revealed::before {
+      opacity: 0;
+      transform: scale(.86);
+      transition-delay: var(--reveal-delay, 0ms);
+    }
+
+    .cell.is-flagged::before {
+      background-color: #f5dfdd;
+      background-image: linear-gradient(150deg, rgba(255, 255, 255, .45), rgba(206, 154, 150, .035));
+    }
+
+    .cell.is-mine::before,
+    .cell.is-wrong::before,
+    .cell.is-hit::before {
+      opacity: 1;
+      transform: none;
+      background-color: #f8e7e1;
+      background-image: linear-gradient(150deg, rgba(255, 255, 255, .55), rgba(210, 157, 146, .04));
+    }
+
+    .cell.is-hit {
+      z-index: 3;
+      box-shadow:
+        0 0 0 2px rgba(207, 126, 118, .4),
+        0 6px 16px rgba(205, 138, 131, .22);
+    }
+
+    .cell.is-hit::before {
+      background-color: #f4d1cb;
+      box-shadow: inset 0 0 0 1px rgba(209, 140, 132, .16);
+    }
+
+    .cell.is-wrong::before {
+      background-color: #fbebe7;
+    }
+
+    .cell:focus-visible {
+      z-index: 5;
+      outline: 2px solid var(--rose-deep);
+      outline-offset: 2px;
+    }
+
+    .cell.is-holding {
+      transform: scale(.94);
+      box-shadow: 0 3px 9px rgba(200, 151, 143, .16);
+    }
+
+    /* 只在有鼠标的设备上使用上浮柔光，避免触屏出现粘滞 hover */
+    @media (hover: hover) and (pointer: fine) {
+      .board:not(.is-over) .cell:not(.is-revealed):hover {
+        z-index: 3;
+        transform: translateY(-2px);
+        box-shadow:
+          0 9px 20px rgba(219, 169, 162, .32),
+          0 2px 6px rgba(201, 154, 144, .1);
+      }
+
+      .board:not(.is-over) .cell:not(.is-revealed):hover::before {
+        background-color: #fae5e2;
+      }
+
+      .board.is-over .cell {
+        cursor: default;
+      }
+    }
+
+    /* 已翻开的数字内容 */
+    .cell-content {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      width: 100%;
+      height: 100%;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .cell-number {
+      color: #97837b;
+      font-family: var(--font-num);
+      font-size: calc(var(--cell) * .52);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      letter-spacing: -.03em;
+      line-height: 1;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, .8);
+    }
+
+    /* 数字颜色：柔和区分，不用深色粗体 */
+    .cell-number.n1 { color: #829aa6; }
+    .cell-number.n2 { color: #86a48b; }
+    .cell-number.n3 { color: #c4837c; }
+    .cell-number.n4 { color: #a08bb8; }
+    .cell-number.n5 { color: #b6906b; }
+    .cell-number.n6 { color: #7fa59e; }
+    .cell-number.n7 { color: #a48490; }
+    .cell-number.n8 { color: #8f7c76; }
+
+    .just-opened .cell-number {
+      animation: softAppear .32s ease var(--reveal-delay, 0ms) both;
+    }
+
+    @keyframes softAppear {
+      0% { opacity: 0; transform: translateY(2px) scale(.88); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* 小熊猫 & 小拖鞋图标 */
+    .cell-icon {
+      display: block;
+      width: 82%;
+      height: 82%;
+      filter: drop-shadow(0 2px 2px rgba(181, 135, 127, .12));
+      pointer-events: none;
+    }
+
+    .cell .slipper-icon {
+      animation: softPop .28s ease-out both;
+    }
+
+    .cell .panda-icon {
+      width: 88%;
+      height: 88%;
+      animation: softPop .3s ease-out var(--mine-delay, 0ms) both;
+    }
+
+    .just-opened .cell-icon {
+      animation: softPop .3s ease-out var(--reveal-delay, 0ms) both;
+    }
+
+    @keyframes softPop {
+      0% { opacity: 0; transform: scale(.78); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .cell.is-wrong .slipper-icon {
+      opacity: .36;
+      transform: scale(.82) rotate(-8deg);
+    }
+
+    .wrong-mark {
+      position: absolute;
+      right: 11%;
+      bottom: 9%;
+      z-index: 3;
+      display: grid;
+      width: calc(var(--cell) * .35);
+      height: calc(var(--cell) * .35);
+      place-items: center;
+      border-radius: 50%;
+      background: #eab4ad;
+      color: #fffaf4;
+      font-family: var(--font-rounded);
+      font-size: calc(var(--cell) * .24);
+      font-weight: 700;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    /* 数字周围旗帜不对时的轻微提示 */
+    .cell.is-nope {
+      animation: softNope .24s ease;
+    }
+
+    @keyframes softNope {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(2px); }
+    }
+
+    /* 翻开后的整片区域柔和入场 */
+    .board.is-cleared .cell.is-revealed {
+      animation: boardGlow 1.1s ease both;
+    }
+
+    @keyframes boardGlow {
+      0% { box-shadow: inset 0 0 0 1px rgba(238, 222, 211, .72); }
+      45% { box-shadow: inset 0 0 0 1px rgba(232, 192, 184, .75), 0 0 12px rgba(238, 196, 188, .16); }
+      100% { box-shadow: inset 0 0 0 1px rgba(238, 222, 211, .72); }
+    }
+
+    /* =========================================================
+       8. 状态 / 操作提示 / 自定义棋盘
+       ========================================================= */
+    .below-board {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 5px 14px;
+      margin-top: 12px;
+      padding: 0 3px;
+    }
+
+    .status {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.55;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #d7aea7;
+      box-shadow: 0 0 0 3px rgba(233, 196, 190, .2);
+    }
+
+    .status[data-mood="play"] .status-dot {
+      background: #c8a8a0;
+      animation: dotBreathe 2s ease-in-out infinite;
+    }
+
+    .status[data-mood="win"] .status-dot {
+      background: #a9c5ac;
+      box-shadow: 0 0 0 3px rgba(169, 197, 172, .18);
+    }
+
+    .status[data-mood="lose"] .status-dot {
+      background: #d5a29c;
+      box-shadow: 0 0 0 3px rgba(213, 162, 156, .16);
+    }
+
+    @keyframes dotBreathe {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .45; }
+    }
+
+    .control-hint {
+      margin: 0;
+      color: var(--ink-faint);
+      font-size: 9.5px;
+      font-weight: 500;
+      letter-spacing: .015em;
+      line-height: 1.55;
+      text-align: right;
+    }
+
+    .touch-hint { display: none; }
+
+    .customizer {
+      margin-top: 13px;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(226, 207, 197, .8);
+    }
+
+    .customizer summary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 3px 0;
+      color: var(--ink-faint);
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .03em;
+      list-style: none;
+      transition: color .18s ease;
+    }
+
+    .customizer summary::-webkit-details-marker { display: none; }
+
+    .customizer summary::after {
+      content: "⌄";
+      display: inline-block;
+      color: #c3aba1;
+      font-size: 11px;
+      line-height: 1;
+      transition: transform .2s ease;
+    }
+
+    .customizer[open] summary::after {
+      transform: rotate(180deg);
+    }
+
+    .customizer summary:hover { color: var(--ink-soft); }
+
+    .custom-form {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 9px;
+      padding: 10px;
+      border-radius: 16px;
+      background: rgba(252, 242, 236, .65);
+    }
+
+    .custom-field {
+      display: flex;
+      min-height: 32px;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      background: rgba(255, 252, 248, .8);
+      color: var(--ink-faint);
+      font-size: 9.5px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .custom-field input {
+      width: 32px;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font-family: var(--font-num);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+
+    .custom-field input.mines { width: 38px; }
+
+    .custom-field input::-webkit-outer-spin-button,
+    .custom-field input::-webkit-inner-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
+
+    .custom-field:focus-within {
+      box-shadow: 0 0 0 2px rgba(232, 184, 179, .45);
+    }
+
+    .custom-field input.is-invalid {
+      color: #b46d65;
+    }
+
+    .apply-button {
+      min-height: 32px;
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #f0d4d0;
+      color: #7e5b55;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      transition: background-color .18s ease, transform .18s ease;
+    }
+
+    .apply-button:hover {
+      background: #e8c2bd;
+      transform: translateY(-1px);
+    }
+
+    .form-error {
+      flex-basis: 100%;
+      margin: 0;
+      padding: 3px 4px 0;
+      color: #a96860;
+      font-size: 9.5px;
+      font-weight: 600;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    /* =========================================================
+       9. 页脚
+       ========================================================= */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin-top: 18px;
+      color: #b29b92;
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .footer-heart {
+      color: rgba(214, 167, 161, .7);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    /* =========================================================
+       10. 结果弹窗
+       ========================================================= */
+    body.has-modal {
+      overflow: hidden;
+    }
+
+    .modal {
+      position: fixed;
+      z-index: 100;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      pointer-events: none;
+    }
+
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(112, 87, 81, .28);
+      -webkit-backdrop-filter: blur(5px);
+      backdrop-filter: blur(5px);
+      opacity: 0;
+      pointer-events: auto;
+      transition: opacity .3s ease;
+    }
+
+    .modal.is-open .modal-backdrop {
+      opacity: 1;
+    }
+
+    .modal-card {
+      position: relative;
+      z-index: 2;
+      width: min(430px, 100%);
+      max-height: calc(100vh - 40px);
+      max-height: calc(100dvh - 40px);
+      overflow: auto;
+      padding: 24px 26px 22px;
+      border-radius: 30px;
+      background: #fffaf5;
+      box-shadow:
+        0 30px 90px rgba(134, 98, 91, .25),
+        inset 0 1px 0 rgba(255, 255, 255, .9);
+      opacity: 0;
+      pointer-events: auto;
+      transform: translateY(18px) scale(.97);
+      transition:
+        opacity .3s ease,
+        transform .34s cubic-bezier(.2, .8, .3, 1.08);
+      scrollbar-width: thin;
+      scrollbar-color: #d9b6ae transparent;
+    }
+
+    .modal.is-open .modal-card {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-card.is-win {
+      background: #fff3f2;
+    }
+
+    .modal-card.is-lose {
+      background: #fffaf5;
+    }
+
+    .modal-inner {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+    }
+
+    .modal-close {
+      position: absolute;
+      z-index: 5;
+      top: 12px;
+      right: 13px;
+      display: grid;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255, 253, 249, .55);
+      color: #b39e95;
+      cursor: pointer;
+      font-family: var(--font-rounded);
+      font-size: 20px;
+      font-weight: 300;
+      line-height: 1;
+      transition: background-color .18s ease, color .18s ease;
+    }
+
+    .modal-close:hover {
+      background: #f3dfda;
+      color: #84665f;
+    }
+
+    .modal-mascot {
+      display: grid;
+      width: 78px;
+      height: 78px;
+      margin: 0 auto 12px;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 252, 247, .76);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .9),
+        0 10px 25px rgba(190, 144, 136, .11);
+    }
+
+    .modal-card.is-win .modal-mascot {
+      background: rgba(255, 250, 246, .6);
+      color: #e3aea9;
+    }
+
+    .modal-card.is-lose .modal-mascot {
+      background: rgba(253, 244, 239, .7);
+    }
+
+    .modal-mascot svg {
+      display: block;
+      width: 52px;
+      height: 52px;
+    }
+
+    .modal-card.is-win .modal-mascot svg {
+      animation: heartBreathe 2.1s ease-in-out infinite;
+    }
+
+    @keyframes heartBreathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.055); }
+    }
+
+    .modal-title {
+      margin: 0;
+      color: #7c635c;
+      font-size: clamp(22px, 4.7vw, 28px);
+      font-weight: 800;
+      letter-spacing: .015em;
+      line-height: 1.4;
+      text-wrap: balance;
+    }
+
+    .modal-desc {
+      margin: 9px auto 0;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.8;
+      white-space: pre-line;
+    }
+
+    .modal-note {
+      margin: 11px 0 0;
+      color: var(--ink-faint);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: .02em;
+      line-height: 1.6;
+    }
+
+    .modal-note:empty {
+      display: none;
+    }
+
+    .modal-primary {
+      min-width: 138px;
+      min-height: 41px;
+      margin-top: 16px;
+      padding: 9px 21px;
+      border: 0;
+      border-radius: 999px;
+      background: #edccc7;
+      color: #755650;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .65),
+        0 6px 16px rgba(192, 141, 133, .14);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      line-height: 1.2;
+      transition: background-color .18s ease, transform .18s ease, box-shadow .18s ease;
+    }
+
+    .modal-primary:hover {
+      background: #e6bdb8;
+      transform: translateY(-1px);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .6),
+        0 9px 22px rgba(192, 141, 133, .2);
+    }
+
+    .modal-primary:active {
+      transform: translateY(1px);
+    }
+
+    .modal-card.is-lose .modal-primary {
+      background: #f1d9d4;
+    }
+
+    /* 对战战绩码交换区 */
+    .race-exchange {
+      margin: 14px 0 0;
+      padding: 11px;
+      border-radius: 16px;
+      background: rgba(255, 252, 248, .58);
+      box-shadow: inset 0 0 0 1px rgba(238, 218, 208, .7);
+      text-align: left;
+    }
+
+    .exchange-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .exchange-row + .exchange-row {
+      margin-top: 7px;
+    }
+
+    .exchange-label {
+      flex: 0 0 auto;
+      color: var(--ink-faint);
+      font-size: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .my-code {
+      display: block;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      color: #9b6d66;
+      font-family: "Consolas", "SFMono-Regular", monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-copy-btn,
+    .exchange-submit {
+      min-height: 28px;
+      flex: 0 0 auto;
+      padding: 5px 9px;
+      border: 0;
+      border-radius: 8px;
+      background: #f1d8d3;
+      color: #815f58;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      transition: background-color .18s ease, transform .18s ease;
+    }
+
+    .mini-copy-btn:hover,
+    .exchange-submit:hover {
+      background: #e8c3bd;
+      transform: translateY(-1px);
+    }
+
+    .opponent-code-input {
+      min-width: 0;
+      height: 30px;
+      flex: 1;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 8px;
+      background: #fffdfa;
+      color: var(--ink);
+      box-shadow: inset 0 0 0 1px rgba(234, 215, 205, .9);
+      font-family: "Consolas", "SFMono-Regular", monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: .03em;
+      outline: none;
+      text-transform: uppercase;
+    }
+
+    .opponent-code-input::placeholder {
+      color: #bca69d;
+      font-family: var(--font-rounded);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .exchange-help {
+      margin: 8px 0 0;
+      color: var(--ink-faint);
+      font-size: 9.5px;
+      font-weight: 500;
+      line-height: 1.6;
+    }
+
+    .exchange-error {
+      margin: 6px 0 0;
+      color: #aa665f;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    /* 弹窗里的飘落爱心 */
+    .modal-hearts {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .modal-heart {
+      position: absolute;
+      top: -24px;
+      color: rgba(214, 150, 145, .58);
+      opacity: 0;
+      animation-name: modalHeartFall;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+      pointer-events: none;
+      will-change: transform, opacity;
+    }
+
+    .modal-heart svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    @keyframes modalHeartFall {
+      0% { opacity: 0; transform: translate3d(0, -10px, 0) rotate(-8deg) scale(.85); }
+      12% { opacity: .9; }
+      80% { opacity: .55; }
+      100% { opacity: 0; transform: translate3d(var(--heart-drift, 12px), 520px, 0) rotate(14deg) scale(1); }
+    }
+
+    /* =========================================================
+       11. 页面飘落爱心 & Toast
+       ========================================================= */
+    .falling-hearts {
+      position: fixed;
+      z-index: 90;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .falling-heart {
+      position: absolute;
+      top: -30px;
+      color: rgba(220, 169, 163, .5);
+      opacity: 0;
+      animation-name: pageHeartFall;
+      animation-timing-function: linear;
+      animation-fill-mode: forwards;
+      pointer-events: none;
+    }
+
+    .falling-heart svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    @keyframes pageHeartFall {
+      0% { opacity: 0; transform: translate3d(0, -20px, 0) rotate(-8deg); }
+      10% { opacity: .9; }
+      82% { opacity: .5; }
+      100% { opacity: 0; transform: translate3d(var(--heart-drift, 30px), 110vh, 0) rotate(22deg); }
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 150;
+      max-width: calc(100% - 32px);
+      padding: 9px 15px;
+      border-radius: 999px;
+      background: rgba(116, 94, 87, .92);
+      color: #fffaf4;
+      box-shadow: 0 12px 30px rgba(102, 77, 71, .18);
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      line-height: 1.5;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 8px);
+      transition: opacity .22s ease, transform .22s ease;
+      white-space: nowrap;
+    }
+
+    .toast.is-visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    /* =========================================================
+       12. 响应式
+       ========================================================= */
+    @media (max-width: 680px) {
+      .page {
+        width: min(calc(100% - 22px), 820px);
+        padding-top: 22px;
+      }
+
+      .hero {
+        margin-bottom: 17px;
+      }
+
+      .hero-badge {
+        margin-bottom: 10px;
+      }
+
+      .badge-tile {
+        width: 37px;
+        height: 37px;
+      }
+
+      .badge-tile svg {
+        width: 23px;
+        height: 23px;
+      }
+
+      .hero h1 {
+        max-width: 430px;
+        font-size: clamp(22px, 6vw, 29px);
+        line-height: 1.5;
+      }
+
+      .subtitle {
+        font-size: 11px;
+        letter-spacing: .06em;
+      }
+
+      .mode-tabs {
+        width: min(300px, 100%);
+        margin-top: 13px;
+      }
+
+      .mode-tab {
+        flex: 1;
+        min-width: 0;
+        padding-inline: 10px;
+        font-size: 11px;
+      }
+
+      .game-card {
+        padding: 13px;
+        border-radius: 24px;
+      }
+
+      .game-top {
+        gap: 8px;
+      }
+
+      .stat-card {
+        min-width: 0;
+        flex: 1;
+        gap: 7px;
+        padding: 8px 10px;
+        border-radius: 16px;
+      }
+
+      .stat-card.mine-stat {
+        flex-direction: row-reverse;
+      }
+
+      .stat-icon {
+        width: 29px;
+        height: 29px;
+      }
+
+      .stat-icon svg {
+        width: 21px;
+        height: 21px;
+      }
+
+      .stat-label {
+        font-size: 8px;
+        letter-spacing: .03em;
+      }
+
+      .stat-value {
+        font-size: clamp(16px, 4.8vw, 20px);
+      }
+
+      .reset-row {
+        margin: 10px 0 12px;
+      }
+
+      .battle-panel {
+        padding: 11px;
+        border-radius: 18px;
+        margin-bottom: 12px;
+      }
+
+      .battle-head {
+        gap: 7px;
+      }
+
+      .identity-group {
+        gap: 4px;
+      }
+
+      .battle-label {
+        font-size: 8.5px;
+      }
+
+      .identity-chip {
+        padding: 4px 9px;
+        font-size: 9.5px;
+      }
+
+      .seed-current {
+        font-size: 8.5px;
+        gap: 4px;
+      }
+
+      .active-seed {
+        padding: 2px 6px;
+        font-size: 10px;
+      }
+
+      .battle-controls {
+        gap: 5px;
+        margin-top: 8px;
+      }
+
+      .battle-btn {
+        min-height: 31px;
+        padding: 6px 9px;
+        font-size: 9.5px;
+      }
+
+      .seed-join {
+        min-width: 190px;
+        flex-basis: 200px;
+        gap: 5px;
+      }
+
+      .seed-input {
+        height: 31px;
+        padding-inline: 8px;
+        font-size: 10px;
+      }
+
+      .battle-tip {
+        font-size: 8.5px;
+        line-height: 1.55;
+      }
+
+      .race-dock {
+        padding: 7px 8px;
+      }
+
+      .race-dock-text {
+        font-size: 9px;
+      }
+
+      .board-shell {
+        border-radius: 20px;
+        padding: 7px;
+      }
+
+      .below-board {
+        margin-top: 10px;
+        gap: 4px;
+      }
+
+      .status {
+        flex: 1 1 100%;
+        font-size: 10px;
+      }
+
+      .control-hint {
+        flex: 1 1 100%;
+        font-size: 8.5px;
+        text-align: left;
+      }
+
+      .desktop-hint { display: none; }
+      .touch-hint { display: inline; }
+
+      .customizer {
+        margin-top: 10px;
+        padding-top: 8px;
+      }
+
+      .customizer summary {
+        font-size: 9px;
+      }
+
+      .custom-form {
+        gap: 5px;
+        padding: 8px;
+      }
+
+      .custom-field {
+        min-height: 29px;
+        padding: 2px 6px;
+        font-size: 8.5px;
+      }
+
+      .custom-field input {
+        width: 27px;
+        font-size: 11px;
+      }
+
+      .custom-field input.mines { width: 32px; }
+
+      .apply-button {
+        min-height: 29px;
+        padding: 5px 9px;
+        font-size: 9px;
+      }
+
+      .footer {
+        margin-top: 14px;
+        font-size: 8.5px;
+      }
+
+      .modal {
+        padding: 16px;
+      }
+
+      .modal-card {
+        width: min(410px, 100%);
+        padding: 21px 17px 19px;
+        border-radius: 24px;
+      }
+
+      .modal-mascot {
+        width: 66px;
+        height: 66px;
+        margin-bottom: 10px;
+      }
+
+      .modal-mascot svg {
+        width: 44px;
+        height: 44px;
+      }
+
+      .modal-desc {
+        font-size: 11px;
+      }
+
+      .modal-title {
+        font-size: clamp(21px, 6vw, 26px);
+      }
+
+      .modal-primary {
+        min-height: 38px;
+      }
+
+      .reset-tooltip {
+        display: none;
+      }
+
+      .ambient-heart.heart-a {
+        left: 2%;
+        width: 16px;
+        height: 16px;
+      }
+
+      .ambient-heart.heart-b {
+        right: 3%;
+        width: 12px;
+        height: 12px;
+      }
+
+      .ambient-heart.heart-c {
+        display: none;
+      }
+
+      .toast {
+        bottom: 16px;
+        font-size: 10px;
+        white-space: normal;
+        text-align: center;
+      }
+    }
+
+    @media (max-width: 390px) {
+      .page {
+        width: calc(100% - 16px);
+      }
+
+      .game-card {
+        padding: 11px;
+        border-radius: 22px;
+      }
+
+      .stat-card {
+        padding: 7px 8px;
+      }
+
+      .stat-icon {
+        width: 26px;
+        height: 26px;
+      }
+
+      .stat-icon svg {
+        width: 19px;
+        height: 19px;
+      }
+
+      .stat-label {
+        font-size: 7.5px;
+      }
+
+      .stat-value {
+        font-size: 16px;
+      }
+
+      .identity-group {
+        width: 100%;
+      }
+
+      .seed-current {
+        width: 100%;
+        justify-content: flex-start;
+        margin-left: 1px;
+      }
+
+      .seed-join {
+        min-width: 100%;
+        flex-basis: 100%;
+      }
+
+      .battle-btn {
+        flex: 0 1 auto;
+      }
+
+      .exchange-label {
+        font-size: 9px;
+      }
+
+      .modal-card {
+        padding-inline: 14px;
+      }
+    }
+
+    @media (pointer: coarse) {
+      .desktop-hint { display: none; }
+      .touch-hint { display: inline; }
+      .reset-tooltip { display: none; }
+    }
+
+    /* 尊重系统减少动态效果的设置 */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: .001ms !important;
+        animation-delay: 0ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: .001ms !important;
+      }
+    }
+    /* =========================================================
+       13. 奶白 × 淡蓝主题细节
+       在保留豆沙粉作为小面积点缀的前提下，把整体调亮、调柔。
+       ========================================================= */
+    ::selection {
+      color: #5f737e;
+      background: #d9edf6;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    summary:focus-visible {
+      outline-color: var(--sky-deep);
+    }
+
+    .ambient-blob.blob-1 {
+      background: radial-gradient(circle, rgba(205, 233, 244, .8), transparent 68%);
+    }
+
+    .ambient-blob.blob-2 {
+      background: radial-gradient(circle, rgba(234, 246, 252, .8), transparent 68%);
+    }
+
+    .ambient-blob.blob-3 {
+      background: radial-gradient(circle, rgba(250, 233, 236, .48), transparent 70%);
+    }
+
+    .ambient-heart,
+    .ambient-heart.heart-a {
+      color: rgba(153, 190, 208, .34);
+    }
+
+    .ambient-heart.heart-b {
+      color: rgba(229, 184, 188, .38);
+    }
+
+    .ambient-heart.heart-c {
+      color: rgba(173, 204, 219, .3);
+    }
+
+    .badge-tile {
+      background: rgba(255, 255, 255, .96);
+      box-shadow:
+        0 8px 20px rgba(115, 150, 165, .14),
+        inset 0 1px 0 rgba(255, 255, 255, .95);
+    }
+
+    .badge-tile:last-child {
+      background: var(--sky-soft);
+    }
+
+    .hero h1 {
+      color: #6e7e86;
+      text-shadow: 3px 3px 0 #e7f2f8;
+    }
+
+    .hero h1 .couple {
+      color: #ae8184;
+    }
+
+    .hero h1 .x-mark {
+      color: #b6c8d1;
+    }
+
+    .subtitle {
+      color: #8e9da4;
+    }
+
+    .mode-tabs {
+      background: rgba(232, 244, 249, .9);
+      box-shadow:
+        inset 0 1px 3px rgba(119, 153, 168, .08),
+        0 1px 0 rgba(255, 255, 255, .9);
+    }
+
+    .mode-tab {
+      color: #8e9ca4;
+    }
+
+    .mode-tab:hover {
+      color: #6c7f89;
+      background: rgba(255, 255, 255, .62);
+    }
+
+    .mode-tab[aria-pressed="true"] {
+      background: #ffffff;
+      color: #7b9dae;
+      box-shadow:
+        0 5px 14px rgba(111, 149, 166, .14),
+        inset 0 1px 0 #fff;
+    }
+
+    .game-card {
+      border-color: rgba(255, 255, 255, .96);
+      background: rgba(255, 255, 255, .91);
+      box-shadow:
+        var(--shadow-soft),
+        inset 0 1px 0 rgba(255, 255, 255, .96);
+    }
+
+    .stat-card {
+      background: #eef8fc;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .96),
+        0 4px 12px rgba(114, 148, 163, .055);
+    }
+
+    .stat-card.mine-stat {
+      background: #f7fbfe;
+    }
+
+    .stat-icon {
+      background: #ffffff;
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 4px 9px rgba(114, 148, 163, .08);
+    }
+
+    .stat-label {
+      color: #a5b2b9;
+    }
+
+    .stat-value {
+      color: #667a84;
+    }
+
+    .reset-button {
+      color: #8196a0;
+      background: #eff8fc;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .9),
+        0 4px 12px rgba(111, 145, 160, .08);
+    }
+
+    /* 保留最初设计：重置按钮悬浮时变粉 */
+    .reset-button:hover {
+      color: #7b6268;
+      background: #f3dade;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .8),
+        0 8px 20px rgba(192, 144, 153, .2);
+    }
+
+    .reset-tooltip,
+    .reset-tooltip::after {
+      background: #62757f;
+    }
+
+    .battle-panel {
+      background: rgba(241, 249, 252, .9);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .94),
+        inset 0 -1px 0 rgba(195, 220, 231, .28);
+    }
+
+    .battle-label,
+    .seed-current {
+      color: #a3b0b7;
+    }
+
+    .identity-options {
+      background: rgba(255, 255, 255, .66);
+    }
+
+    .identity-chip {
+      color: #8c9aa2;
+    }
+
+    .identity-chip:hover {
+      color: #6e808a;
+      background: rgba(255, 255, 255, .64);
+    }
+
+    .identity-chip[aria-pressed="true"] {
+      background: #f7e7e9;
+      color: #986f72;
+      box-shadow: 0 3px 8px rgba(191, 146, 151, .1);
+    }
+
+    .active-seed {
+      background: rgba(255, 255, 255, .9);
+      color: #7d9dad;
+      box-shadow: inset 0 0 0 1px rgba(216, 234, 242, .8);
+    }
+
+    .battle-btn {
+      color: #8497a1;
+      background: rgba(255, 255, 255, .9);
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 3px 8px rgba(115, 150, 165, .07);
+    }
+
+    .battle-btn:hover {
+      color: #6d818b;
+      background: #ffffff;
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 6px 14px rgba(115, 150, 165, .13);
+    }
+
+    .battle-btn.primary {
+      background: #e3f2f8;
+      color: #6e8fa1;
+    }
+
+    .battle-btn.primary:hover {
+      background: #d8edf6;
+    }
+
+    .seed-input {
+      background: rgba(255, 255, 255, .96);
+      box-shadow:
+        inset 0 0 0 1px rgba(215, 233, 241, .95),
+        inset 0 1px 2px rgba(114, 148, 163, .05);
+    }
+
+    .seed-input::placeholder {
+      color: #b5c2c9;
+    }
+
+    .seed-input:focus {
+      background: #ffffff;
+      box-shadow:
+        inset 0 0 0 1.5px var(--sky-deep),
+        0 0 0 3px rgba(143, 181, 199, .16);
+    }
+
+    .seed-feedback {
+      color: #a66f6d;
+    }
+
+    .battle-tip {
+      color: #a4b1b8;
+    }
+
+    .race-dock {
+      background: rgba(255, 255, 255, .72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+    }
+
+    .race-dock-text {
+      color: #8b9da5;
+    }
+
+    .race-dock-btn {
+      background: #e5f3f8;
+      color: #6e8c9c;
+    }
+
+    .race-dock-btn:hover {
+      background: #d9ecf4;
+    }
+
+    .board-shell {
+      background: linear-gradient(145deg, #e9f4f9, #deedf4);
+      box-shadow:
+        inset 0 2px 9px rgba(107, 144, 160, .08),
+        inset 0 -1px 0 rgba(255, 255, 255, .9);
+      scrollbar-color: #b5d0dc #e3f0f6;
+    }
+
+    .board-shell::-webkit-scrollbar-track {
+      background: #e3f0f6;
+    }
+
+    .board-shell::-webkit-scrollbar-thumb {
+      border-color: #e3f0f6;
+      background: #b5d0dc;
+    }
+
+    .cell {
+      background: #ffffff;
+      box-shadow:
+        0 2px 5px rgba(116, 151, 166, .15),
+        0 0 0 1px rgba(255, 255, 255, .42) inset;
+    }
+
+    .cell::before {
+      background-color: #edf7fb;
+      background-image: linear-gradient(150deg, rgba(255, 255, 255, .72), rgba(154, 191, 207, .04));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .9),
+        inset 0 -1px 0 rgba(148, 183, 198, .13);
+    }
+
+    .cell.is-revealed {
+      background: #ffffff;
+      box-shadow:
+        inset 0 0 0 1px rgba(226, 238, 244, .9),
+        0 1px 2px rgba(113, 147, 162, .035);
+    }
+
+    .cell.is-revealed:nth-child(even) {
+      background: #fcfdff;
+    }
+
+    .cell.is-flagged::before {
+      background-color: #fbedf0;
+      background-image: linear-gradient(150deg, rgba(255, 255, 255, .62), rgba(206, 154, 160, .04));
+    }
+
+    .cell.is-mine::before,
+    .cell.is-wrong::before,
+    .cell.is-hit::before {
+      background-color: #f2f9fc;
+      background-image: linear-gradient(150deg, rgba(255, 255, 255, .76), rgba(150, 185, 200, .04));
+    }
+
+    .cell.is-hit {
+      box-shadow:
+        0 0 0 2px rgba(200, 143, 147, .34),
+        0 6px 16px rgba(200, 143, 147, .18);
+    }
+
+    .cell.is-hit::before {
+      background-color: #f6dfe2;
+      box-shadow: inset 0 0 0 1px rgba(197, 143, 147, .12);
+    }
+
+    .cell.is-wrong {
+      background: #fffafb;
+      box-shadow: inset 0 0 0 1px rgba(226, 184, 188, .55);
+    }
+
+    .cell.is-wrong::before {
+      background-color: #fdf1f2;
+    }
+
+    .cell:focus-visible {
+      outline-color: var(--sky-deep);
+    }
+
+    .cell.is-holding {
+      background: #fbe9eb;
+      box-shadow: 0 3px 9px rgba(195, 152, 163, .16);
+    }
+
+    .board:not(.is-over) .cell:active {
+      box-shadow:
+        inset 2px 2px 0 rgba(255, 255, 255, .5),
+        inset -2px -2px 0 rgba(129, 167, 184, .2),
+        0 1px 0 #b9d2de;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .board:not(.is-over) .cell:not(.is-revealed):hover {
+        box-shadow:
+          0 9px 20px rgba(198, 162, 177, .26),
+          0 2px 6px rgba(115, 150, 165, .08);
+      }
+
+      .board:not(.is-over) .cell:not(.is-revealed):hover::before {
+        background-color: #f9e8eb;
+      }
+    }
+
+    .cell-number {
+      color: #8c9ba3;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, .9);
+    }
+
+    .cell-number.n1 { color: #7f9eb2; }
+    .cell-number.n2 { color: #89a99e; }
+    .cell-number.n3 { color: #cd9293; }
+    .cell-number.n4 { color: #a19abf; }
+    .cell-number.n5 { color: #b49e83; }
+    .cell-number.n6 { color: #82acaf; }
+    .cell-number.n7 { color: #a995a0; }
+    .cell-number.n8 { color: #8e9ca2; }
+
+    .cell-icon {
+      filter: drop-shadow(0 2px 2px rgba(116, 151, 166, .12));
+    }
+
+    .wrong-mark {
+      background: #e4afb2;
+      color: #fffafd;
+    }
+
+    .board.is-cleared .cell.is-revealed {
+      animation: none;
+    }
+
+    .status-dot {
+      background: #b8d6e2;
+      box-shadow: 0 0 0 3px rgba(184, 214, 226, .2);
+    }
+
+    .status[data-mood="play"] .status-dot {
+      background: #a8c8d7;
+      box-shadow: 0 0 0 3px rgba(168, 200, 215, .2);
+    }
+
+    .status[data-mood="win"] .status-dot {
+      background: #a9c7b5;
+      box-shadow: 0 0 0 3px rgba(169, 199, 181, .18);
+    }
+
+    .status[data-mood="lose"] .status-dot {
+      background: #d5a3a6;
+      box-shadow: 0 0 0 3px rgba(213, 163, 166, .16);
+    }
+
+    .customizer {
+      border-top-color: rgba(214, 231, 239, .85);
+    }
+
+    .customizer summary {
+      color: #a4b1b8;
+    }
+
+    .customizer summary::after {
+      color: #b4c4cc;
+    }
+
+    .custom-form {
+      background: rgba(243, 250, 252, .82);
+    }
+
+    .custom-field {
+      color: #a3b0b7;
+      background: rgba(255, 255, 255, .9);
+    }
+
+    .custom-field:focus-within {
+      box-shadow: 0 0 0 2px rgba(143, 181, 199, .35);
+    }
+
+    .apply-button {
+      background: #e4f2f8;
+      color: #6d8b9b;
+    }
+
+    .apply-button:hover {
+      background: #d8ebf4;
+    }
+
+    .form-error {
+      color: #a46d6c;
+    }
+
+    .modal-backdrop {
+      background: rgba(78, 101, 115, .3);
+    }
+
+    .modal-card {
+      background: #ffffff;
+      box-shadow:
+        0 30px 90px rgba(102, 132, 146, .24),
+        inset 0 1px 0 rgba(255, 255, 255, .96);
+    }
+
+    .modal-card.is-win {
+      background: #fff3f5;
+    }
+
+    .modal-card.is-lose {
+      background: #fbfdff;
+    }
+
+    .modal-close {
+      color: #aab8bf;
+      background: rgba(255, 255, 255, .62);
+    }
+
+    .modal-close:hover {
+      color: #6d828c;
+      background: #e9f4f9;
+    }
+
+    .modal-mascot {
+      background: rgba(255, 255, 255, .78);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .95),
+        0 10px 25px rgba(117, 150, 165, .1);
+    }
+
+    .modal-card.is-win .modal-mascot {
+      background: rgba(255, 252, 252, .74);
+      color: #dfaeb3;
+    }
+
+    .modal-card.is-lose .modal-mascot {
+      background: rgba(246, 251, 253, .82);
+    }
+
+    .modal-title {
+      color: #6d7e87;
+    }
+
+    .modal-desc {
+      color: #8999a1;
+    }
+
+    .modal-note {
+      color: #aab7bd;
+    }
+
+    .modal-primary {
+      background: #dfeef5;
+      color: #6b818c;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .72),
+        0 6px 16px rgba(116, 150, 165, .14);
+    }
+
+    .modal-primary:hover {
+      background: #d3e8f2;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .7),
+        0 9px 22px rgba(116, 150, 165, .2);
+    }
+
+    .modal-card.is-lose .modal-primary {
+      background: #e7f3f8;
+    }
+
+    .race-exchange {
+      background: rgba(255, 255, 255, .62);
+      box-shadow: inset 0 0 0 1px rgba(218, 233, 241, .82);
+    }
+
+    .exchange-label {
+      color: #a2b0b7;
+    }
+
+    .my-code {
+      color: #7494a4;
+    }
+
+    .mini-copy-btn,
+    .exchange-submit {
+      background: #e4f2f8;
+      color: #6d8c9d;
+    }
+
+    .mini-copy-btn:hover,
+    .exchange-submit:hover {
+      background: #d8ebf4;
+    }
+
+    .opponent-code-input {
+      background: #ffffff;
+      box-shadow: inset 0 0 0 1px rgba(216, 233, 241, .92);
+    }
+
+    .opponent-code-input::placeholder {
+      color: #b4c2c9;
+    }
+
+    .exchange-help {
+      color: #aab7bd;
+    }
+
+    .exchange-error {
+      color: #a56f6e;
+    }
+
+    .toast {
+      background: rgba(102, 121, 131, .94);
+      box-shadow: 0 12px 30px rgba(96, 123, 136, .2);
+    }
+
+    .footer {
+      color: #a4b2b9;
+    }
+
+    .footer-heart:first-of-type {
+      color: #aac8d6;
+    }
+
+    .footer-heart:last-of-type {
+      color: #ddb4b7;
+    }
+    /* =========================================================
+       14. 最终视觉校准：奶白 / 浅雾蓝 / 樱花粉
+       奶白负责大面积留白，浅雾蓝负责标题、信息与边界，
+       樱花粉只用来点按钮、hover、爱心、拖鞋和弹窗的小情绪。
+       ========================================================= */
+    body {
+      color: var(--ink);
+      background-color: #fffdfa;
+      background-image:
+        radial-gradient(ellipse at 0% 10%, rgba(218, 238, 247, .44), transparent 38%),
+        radial-gradient(ellipse at 100% 86%, rgba(250, 230, 234, .35), transparent 40%),
+        radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, .84), transparent 63%),
+        linear-gradient(110deg, #f9fcfe 0%, #fffdfa 48%, #fdf8f9 100%);
+      background-attachment: fixed;
+      background-size: cover;
+    }
+
+    .ambient-blob {
+      opacity: .36;
+    }
+
+    .ambient-blob.blob-1 {
+      background: radial-gradient(circle, rgba(215, 237, 246, .75), transparent 68%);
+    }
+
+    .ambient-blob.blob-2 {
+      background: radial-gradient(circle, rgba(250, 233, 236, .68), transparent 68%);
+    }
+
+    .ambient-blob.blob-3 {
+      background: radial-gradient(circle, rgba(235, 246, 251, .55), transparent 70%);
+    }
+
+    .hero h1 {
+      color: #7b95a3;
+      text-shadow: none;
+    }
+
+    .hero h1 .couple {
+      color: #aa8085;
+    }
+
+    .hero h1 .x-mark {
+      color: #b2c5cf;
+    }
+
+    @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+      .hero h1 {
+        color: transparent;
+        background: linear-gradient(100deg, #7798a9 0%, #96aeb9 48%, #c7959b 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .hero h1 .couple,
+      .hero h1 .x-mark {
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+      }
+    }
+
+    .subtitle {
+      color: #95a7b0;
+    }
+
+    .mode-tabs {
+      padding: 4px;
+      border: 1px solid rgba(220, 234, 241, .8);
+      border-radius: var(--radius-control);
+      background: linear-gradient(145deg, rgba(255, 253, 250, .92), rgba(251, 247, 247, .86));
+      box-shadow:
+        0 5px 16px rgba(153, 173, 184, .06),
+        inset 0 1px 0 rgba(255, 255, 255, .95);
+    }
+
+    .mode-tab {
+      border-radius: var(--radius-chip);
+      color: #9b8b87;
+      background: transparent;
+    }
+
+    .mode-tab:hover {
+      color: #786965;
+      background: linear-gradient(135deg, #fbe9ec, #fffaf7);
+    }
+
+    .mode-tab[aria-pressed="true"] {
+      color: #6f8d9f;
+      background: linear-gradient(135deg, #fdf1f4, #eff9fc);
+      box-shadow:
+        inset 0 0 0 1px rgba(195, 217, 228, .58),
+        0 4px 12px rgba(157, 176, 187, .12);
+    }
+
+    .mode-tab[aria-pressed="true"]:hover {
+      color: #806d69;
+      background: linear-gradient(135deg, #fbe8ec, #fff8f5);
+    }
+
+    .game-card {
+      border: 1px solid rgba(208, 228, 237, .78);
+      border-radius: var(--radius-card);
+      background: linear-gradient(145deg, rgba(255, 253, 250, .97), rgba(255, 248, 249, .92));
+      box-shadow:
+        0 24px 64px rgba(148, 168, 180, .12),
+        0 6px 18px rgba(220, 186, 191, .06),
+        inset 0 1px 0 rgba(255, 255, 255, .96);
+    }
+
+    .stat-card {
+      border: 1px solid rgba(220, 235, 242, .82);
+      border-radius: 16px;
+      background: linear-gradient(135deg, #f3fafd, #eaf5fa);
+      box-shadow:
+        0 6px 16px rgba(146, 169, 181, .06),
+        inset 0 1px 0 rgba(255, 255, 255, .95);
+    }
+
+    .stat-card.mine-stat {
+      background: linear-gradient(135deg, #f6fbfd, #edf7fb);
+    }
+
+    .stat-icon {
+      background: linear-gradient(145deg, #fffdfb, #f9f4f1);
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 4px 9px rgba(151, 173, 184, .08);
+    }
+
+    .stat-label {
+      color: #93a8b3;
+    }
+
+    .stat-value {
+      color: #6f7e85;
+    }
+
+    .reset-button {
+      min-height: 38px;
+      padding: 8px 17px;
+      border: 1px solid rgba(234, 216, 215, .72);
+      border-radius: var(--radius-control);
+      color: #8b7a76;
+      background: linear-gradient(135deg, #fffdfb, #fff5f6);
+      box-shadow:
+        0 5px 14px rgba(185, 166, 169, .08),
+        inset 0 1px 0 rgba(255, 255, 255, .96);
+    }
+
+    .reset-button:hover {
+      color: #745d59;
+      background: linear-gradient(135deg, #f5d8dd, #fff8f5);
+      border-color: rgba(226, 193, 198, .82);
+      box-shadow:
+        0 9px 20px rgba(208, 165, 174, .18),
+        inset 0 1px 0 rgba(255, 255, 255, .82);
+    }
+
+    .reset-tooltip {
+      background: rgba(122, 105, 101, .94);
+    }
+
+    .reset-tooltip::after {
+      background: rgba(122, 105, 101, .94);
+    }
+
+    .battle-panel {
+      border: 1px solid rgba(221, 234, 240, .76);
+      border-radius: var(--radius-panel);
+      background: linear-gradient(145deg, rgba(255, 252, 249, .84), rgba(251, 245, 247, .82));
+      box-shadow:
+        0 8px 20px rgba(156, 177, 189, .055),
+        inset 0 1px 0 rgba(255, 255, 255, .9);
+    }
+
+    .identity-options {
+      border: 1px solid rgba(230, 231, 231, .6);
+      border-radius: 12px;
+      background: rgba(255, 252, 249, .7);
+    }
+
+    .identity-chip {
+      border-radius: 8px;
+      color: #9b8b87;
+      background: transparent;
+    }
+
+    .identity-chip:hover {
+      color: #786965;
+      background: linear-gradient(135deg, #fbe9ec, #fffaf7);
+    }
+
+    .identity-chip[aria-pressed="true"] {
+      color: #8f6f70;
+      background: linear-gradient(135deg, #f9e5e9, #fff9f7);
+      box-shadow: 0 3px 8px rgba(191, 146, 151, .08);
+    }
+
+    .identity-chip[aria-pressed="true"]:hover {
+      color: #806162;
+      background: linear-gradient(135deg, #f7dce0, #fff8f5);
+    }
+
+    .active-seed {
+      color: #7b98a7;
+      background: rgba(245, 251, 253, .92);
+      box-shadow: inset 0 0 0 1px rgba(216, 232, 240, .9);
+    }
+
+    .seed-current,
+    .battle-label,
+    .battle-tip {
+      color: #a0908b;
+    }
+
+    .battle-btn {
+      border: 1px solid rgba(233, 216, 214, .7);
+      border-radius: var(--radius-chip);
+      color: #8b7975;
+      background: linear-gradient(135deg, #fffdfb, #fff5f6);
+      box-shadow:
+        0 4px 10px rgba(185, 166, 169, .06),
+        inset 0 1px 0 rgba(255, 255, 255, .95);
+    }
+
+    .battle-btn:hover {
+      color: #735c58;
+      border-color: rgba(225, 192, 197, .82);
+      background: linear-gradient(135deg, #f5d8dd, #fff8f4);
+      box-shadow:
+        0 7px 15px rgba(207, 164, 172, .15),
+        inset 0 1px 0 rgba(255, 255, 255, .84);
+    }
+
+    .battle-btn.primary {
+      color: #8f6d6c;
+      border-color: rgba(233, 205, 208, .78);
+      background: linear-gradient(135deg, #fbe8eb, #fff8f6);
+    }
+
+    .battle-btn.primary:hover {
+      color: #7b5d5c;
+      background: linear-gradient(135deg, #f3d3d8, #fff6f2);
+    }
+
+    .seed-input {
+      border-radius: var(--radius-chip);
+      color: #7b6c68;
+      background: rgba(255, 253, 251, .94);
+      box-shadow:
+        inset 0 0 0 1px rgba(213, 230, 239, .86),
+        inset 0 1px 2px rgba(151, 173, 184, .04);
+    }
+
+    .seed-input::placeholder {
+      color: #b7aaa5;
+    }
+
+    .seed-input:focus {
+      background: #fffdfb;
+      box-shadow:
+        inset 0 0 0 1.5px #b9d5e1,
+        0 0 0 3px rgba(240, 206, 211, .24);
+    }
+
+    .seed-feedback {
+      color: #a66f6d;
+    }
+
+    .race-dock {
+      background: rgba(255, 251, 249, .75);
+      box-shadow:
+        inset 0 0 0 1px rgba(235, 225, 221, .65),
+        0 3px 8px rgba(173, 158, 157, .035);
+    }
+
+    .race-dock-text {
+      color: #95847f;
+    }
+
+    .race-dock-btn,
+    .apply-button,
+    .mini-copy-btn,
+    .exchange-submit {
+      border: 1px solid rgba(233, 216, 214, .68);
+      border-radius: 8px;
+      color: #8b7975;
+      background: linear-gradient(135deg, #fffdfb, #fff5f6);
+      box-shadow: 0 3px 8px rgba(185, 166, 169, .05);
+    }
+
+    .race-dock-btn:hover,
+    .apply-button:hover,
+    .mini-copy-btn:hover,
+    .exchange-submit:hover {
+      color: #735c58;
+      border-color: rgba(225, 192, 197, .8);
+      background: linear-gradient(135deg, #f5d8dd, #fff8f4);
+      box-shadow: 0 5px 12px rgba(207, 164, 172, .13);
+    }
+
+    .board-shell {
+      border: 1px solid rgba(213, 231, 240, .8);
+      border-radius: 22px;
+      background: linear-gradient(150deg, #f4fafc 0%, #fdf7f5 100%);
+      box-shadow:
+        inset 0 2px 6px rgba(138, 166, 179, .05),
+        0 6px 18px rgba(159, 180, 191, .045);
+    }
+
+    .cell {
+      background: #fffdfa;
+      border-radius: clamp(5px, calc(var(--cell) * .29), 9px);
+      box-shadow: 0 1px 2px rgba(176, 156, 146, .06);
+    }
+
+    .cell::before {
+      background-color: #fdf6f0;
+      background-image: linear-gradient(152deg, #fffbf6 0%, #faeee5 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .94),
+        inset 0 -2px 3px rgba(185, 150, 132, .065);
+    }
+
+    .cell.is-revealed {
+      background: linear-gradient(145deg, #ffffff 0%, #fffafb 100%);
+      box-shadow: inset 0 0 0 1px rgba(238, 229, 222, .42);
+    }
+
+    .cell.is-revealed:nth-child(even) {
+      background: linear-gradient(145deg, #fffdfa 0%, #fff8fa 100%);
+    }
+
+    .cell.is-flagged::before {
+      background-color: #fceef1;
+      background-image: linear-gradient(152deg, #fdf6f8 0%, #f9e9ed 100%);
+    }
+
+    .cell.is-mine::before {
+      background-color: #fdf4f4;
+      background-image: linear-gradient(152deg, #fff9f7 0%, #fbeceb 100%);
+    }
+
+    .cell.is-wrong::before {
+      background-color: #fdf1f2;
+      background-image: linear-gradient(152deg, #fff8f8 0%, #fbe9ec 100%);
+    }
+
+    .cell.is-hit {
+      box-shadow:
+        0 0 0 2px rgba(219, 169, 176, .28),
+        0 6px 14px rgba(214, 173, 177, .12);
+    }
+
+    .cell.is-hit::before {
+      background-color: #fbe9eb;
+      background-image: linear-gradient(152deg, #fff7f4 0%, #f9e4e7 100%);
+    }
+
+    .cell:focus-visible {
+      outline-color: #a9c7d5;
+    }
+
+    .board:not(.is-over) .cell:active {
+      background: #fffdfa;
+      transform: scale(.965);
+      box-shadow: 0 1px 3px rgba(176, 156, 146, .06);
+    }
+
+    .cell.is-holding {
+      background: #fffdfa;
+      transform: scale(.96);
+      box-shadow: 0 1px 3px rgba(176, 156, 146, .06);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .board:not(.is-over) .cell:not(.is-revealed):hover {
+        transform: translateY(-2px);
+        box-shadow:
+          0 8px 18px rgba(218, 174, 183, .22),
+          0 2px 5px rgba(178, 157, 148, .05);
+      }
+
+      .board:not(.is-over) .cell:not(.is-revealed):hover::before {
+        background-color: #fcebef;
+        background-image: linear-gradient(152deg, #fdf6f8 0%, #fbe9ec 100%);
+      }
+    }
+
+    .cell-number {
+      color: #93827d;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, .9);
+    }
+
+    .cell-number.n1 { color: #7f9faf; }
+    .cell-number.n2 { color: #8ba898; }
+    .cell-number.n3 { color: #cf9396; }
+    .cell-number.n4 { color: #a39abf; }
+    .cell-number.n5 { color: #b59e80; }
+    .cell-number.n6 { color: #82acae; }
+    .cell-number.n7 { color: #a98f99; }
+    .cell-number.n8 { color: #94827c; }
+
+    .wrong-mark {
+      background: #e4b1b6;
+      color: #fffdfb;
+    }
+
+    .status-dot {
+      background: #a9c7d5;
+      box-shadow: 0 0 0 3px rgba(169, 199, 213, .16);
+    }
+
+    .status[data-mood="play"] .status-dot {
+      background: #d9b3b7;
+      box-shadow: 0 0 0 3px rgba(217, 179, 183, .16);
+    }
+
+    .status[data-mood="win"] .status-dot {
+      background: #aec9b6;
+      box-shadow: 0 0 0 3px rgba(174, 201, 182, .14);
+    }
+
+    .status[data-mood="lose"] .status-dot {
+      background: #d7a6a8;
+      box-shadow: 0 0 0 3px rgba(215, 166, 168, .14);
+    }
+
+    .customizer {
+      border-top-color: rgba(226, 234, 237, .85);
+    }
+
+    .customizer summary {
+      color: #a59691;
+    }
+
+    .customizer summary::after {
+      color: #b9c9d0;
+    }
+
+    .custom-form {
+      border-radius: var(--radius-control);
+      background: rgba(253, 248, 246, .72);
+    }
+
+    .custom-field {
+      border-radius: 9px;
+      color: #a3938e;
+      background: linear-gradient(135deg, rgba(255, 253, 250, .94), rgba(255, 248, 247, .9));
+    }
+
+    .custom-field:focus-within {
+      box-shadow: 0 0 0 2px rgba(240, 206, 211, .35);
+    }
+
+    .apply-button {
+      border-radius: var(--radius-chip);
+    }
+
+    .form-error {
+      color: #a46f6c;
+    }
+
+    .modal-backdrop {
+      background: rgba(178, 192, 200, .14);
+      -webkit-backdrop-filter: blur(.8px);
+      backdrop-filter: blur(.8px);
+    }
+
+    .modal-card {
+      width: min(392px, 100%);
+      border: 1px solid rgba(235, 217, 221, .72);
+      border-radius: 26px;
+      background: linear-gradient(145deg, #fffdfb 0%, #fff4f7 100%);
+      box-shadow:
+        0 24px 60px rgba(148, 162, 173, .16),
+        0 6px 18px rgba(214, 177, 184, .08);
+    }
+
+    .modal-card.is-win {
+      background: linear-gradient(145deg, #fffdfb 0%, #fff3f6 100%);
+    }
+
+    .modal-card.is-lose {
+      background: linear-gradient(145deg, #fffdfb 0%, #fdf5f7 100%);
+    }
+
+    .modal-mascot {
+      background: linear-gradient(145deg, #f7fbfd, #fdf4f6);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .96),
+        0 8px 20px rgba(151, 173, 184, .09);
+    }
+
+    .modal-card.is-win .modal-mascot {
+      background: linear-gradient(145deg, #fbfdfe, #fdf2f5);
+      color: #dfaeb3;
+    }
+
+    .modal-card.is-lose .modal-mascot {
+      background: linear-gradient(145deg, #f7fbfd, #fdf5f4);
+    }
+
+    .modal-close {
+      border-radius: 50%;
+      color: #aa9a95;
+      background: rgba(255, 252, 249, .72);
+    }
+
+    .modal-close:hover {
+      color: #7c6864;
+      background: linear-gradient(135deg, #f8e3e7, #fffaf7);
+    }
+
+    .modal-title {
+      color: #7c929e;
+      position: relative;
+    }
+
+    .modal-title::after {
+      content: "";
+      display: block;
+      width: 42px;
+      height: 3px;
+      margin: 8px auto 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #cfe8f3, #f0d4d9);
+    }
+
+    .modal-desc {
+      color: #8d7c78;
+    }
+
+    .modal-note {
+      color: #ad9d98;
+    }
+
+    .modal-primary {
+      min-width: 138px;
+      border: 1px solid rgba(233, 210, 211, .75);
+      border-radius: var(--radius-control);
+      color: #846e6b;
+      background: linear-gradient(135deg, #fffdfb, #fff3f5);
+      box-shadow:
+        0 5px 14px rgba(186, 162, 166, .08),
+        inset 0 1px 0 rgba(255, 255, 255, .95);
+    }
+
+    .modal-primary:hover {
+      color: #715a58;
+      border-color: rgba(226, 192, 196, .82);
+      background: linear-gradient(135deg, #f5d8dd, #fff8f4);
+      box-shadow:
+        0 9px 20px rgba(208, 165, 174, .16),
+        inset 0 1px 0 rgba(255, 255, 255, .84);
+    }
+
+    .modal-primary:focus-visible {
+      outline: 2px solid rgba(190, 139, 146, .72);
+      outline-offset: 3px;
+    }
+
+    .modal-card.is-lose .modal-primary {
+      background: linear-gradient(135deg, #fffdfb, #fdf4f6);
+    }
+
+    .race-exchange {
+      border: 1px solid rgba(229, 236, 239, .8);
+      border-radius: 14px;
+      background: rgba(255, 252, 249, .68);
+      box-shadow: 0 3px 10px rgba(173, 158, 157, .035);
+    }
+
+    .exchange-label {
+      color: #a2928d;
+    }
+
+    .my-code {
+      color: #7b98a7;
+    }
+
+    .opponent-code-input {
+      border-radius: 8px;
+      background: #fffdfb;
+      box-shadow: inset 0 0 0 1px rgba(219, 233, 240, .86);
+    }
+
+    .exchange-help {
+      color: #ad9f9a;
+    }
+
+    .exchange-error {
+      color: #a56f6e;
+    }
+
+    .toast {
+      background: rgba(122, 106, 101, .94);
+      box-shadow: 0 10px 26px rgba(142, 155, 163, .16);
+    }
+
+    .footer {
+      color: #a9a09b;
+    }
+
+    .footer-heart:first-of-type {
+      color: #b2ccd8;
+    }
+
+    .footer-heart:last-of-type {
+      color: #dfb8bc;
+    }
+
+    @media (max-width: 680px) {
+      .game-card {
+        border-radius: 24px;
+      }
+
+      .board-shell {
+        border-radius: 20px;
+      }
+
+      .modal-card {
+        width: min(382px, 100%);
+        border-radius: 24px;
+      }
+
+      .modal-title::after {
+        margin-top: 7px;
+      }
+    }
+
+    /* 点击格子只做轻微缩放，不改变颜色，也不闪一下 */
+    .board:not(.is-over) .cell:active {
+      transform: scale(.965);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .board:not(.is-over) .cell:not(.is-revealed):active {
+        transform: translateY(-2px) scale(.965);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 内联 SVG 图标库：小熊猫、小拖鞋、时钟、刷新、爱心 -->
+  <svg class="svg-sprite" aria-hidden="true" focusable="false" width="0" height="0">
+    <defs>
+      <symbol id="icon-panda" viewBox="0 0 64 64">
+        <!-- 委屈巴巴的 Q 版小熊猫：橘棕色绒毛、奶白脸、圆耳朵，眼角挂着一小滴泪水 -->
+        <g>
+          <!-- 左耳：大一点、向上冒出来，才会像小熊猫而不是小熊 -->
+          <path d="M8.6 24.2C1.6 11.4 9 2.3 20.2 4.1c4.9.8 8.5 3.6 10.6 8.3l-9.3 9.8c-4.4 1.5-8.6 2-12.9 2Z" fill="#CC8059" stroke="#FFF9F2" stroke-width="2.6" stroke-linejoin="round"/>
+          <path d="M13.1 20.5C8.7 11.5 14 5.6 21.6 7.1c2.7.5 4.7 2.1 5.9 4.7l-5.8 6.6c-3.1.9-6 1.1-8.6.1Z" fill="#F5D3C0"/>
+          <!-- 右耳 -->
+          <g transform="translate(64 0) scale(-1 1)">
+            <path d="M8.6 24.2C1.6 11.4 9 2.3 20.2 4.1c4.9.8 8.5 3.6 10.6 8.3l-9.3 9.8c-4.4 1.5-8.6 2-12.9 2Z" fill="#CC8059" stroke="#FFF9F2" stroke-width="2.6" stroke-linejoin="round"/>
+            <path d="M13.1 20.5C8.7 11.5 14 5.6 21.6 7.1c2.7.5 4.7 2.1 5.9 4.7l-5.8 6.6c-3.1.9-6 1.1-8.6.1Z" fill="#F5D3C0"/>
+          </g>
+        </g>
+
+        <!-- 小熊猫脸 -->
+        <path d="M32 9.4C20.3 9.4 11.2 18.5 11.2 30.8c0 12.7 9.1 21.5 20.8 21.5s20.8-8.8 20.8-21.5C52.8 18.5 43.7 9.4 32 9.4Z" fill="#CC8059" stroke="#FFF9F2" stroke-width="2.7"/>
+
+        <!-- 奶白眉斑 -->
+        <path d="M17.5 25.4c2.2-3.6 6.8-4.3 9.8-1.4 1.1 1.1 1.4 2.6.7 3.9-.9 1.8-3 2.5-5.2 1.9-2.7-.8-4.5-2.2-5.3-4.4Z" fill="#FFF8EE"/>
+        <g transform="translate(64 0) scale(-1 1)">
+          <path d="M17.5 25.4c2.2-3.6 6.8-4.3 9.8-1.4 1.1 1.1 1.4 2.6.7 3.9-.9 1.8-3 2.5-5.2 1.9-2.7-.8-4.5-2.2-5.3-4.4Z" fill="#FFF8EE"/>
+        </g>
+
+        <!-- 奶白下半脸，让五官更软乎乎 -->
+        <path d="M13.7 34.3c1.4 8.7 8.6 15.1 18.3 15.1s16.9-6.4 18.3-15.1c-3.8-1.3-7.1-.8-9.9 1.5-2.2 1.8-4.7 2.8-8.4 2.8s-6.2-1-8.4-2.8c-2.8-2.3-6.1-2.8-9.9-1.5Z" fill="#FFF8EE"/>
+
+        <!-- 泪痕：红熊猫的小标志，也显得有一点委屈 -->
+        <path d="M25.4 35.4c.3 2.1-.3 3.6-1.7 4.7M38.6 35.4c-.3 2.1.3 3.6 1.7 4.7" fill="none" stroke="#B57661" stroke-width="1.8" stroke-linecap="round" opacity=".62"/>
+
+        <!-- 眼睛与高光 -->
+        <ellipse cx="23.5" cy="31.1" rx="3.6" ry="4.2" fill="#543F38"/>
+        <ellipse cx="40.5" cy="31.1" rx="3.6" ry="4.2" fill="#543F38"/>
+        <circle cx="22.3" cy="29.8" r="1.2" fill="#FFFDF8" opacity=".9"/>
+        <circle cx="39.3" cy="29.8" r="1.2" fill="#FFFDF8" opacity=".9"/>
+
+        <!-- 鼻尖、委屈的小嘴和脸颊 -->
+        <path d="M28.9 38.9c1.3-1.3 4.9-1.3 6.2 0 .8.8.4 2.1-.7 2.7-1.3.7-3.6.7-4.8 0-1.1-.6-1.5-1.9-.7-2.7Z" fill="#4F3B35"/>
+        <path d="M32 42v1.5M29.7 44.7c1.2-1.4 3.4-1.4 4.6 0" fill="none" stroke="#6A5149" stroke-width="1.8" stroke-linecap="round"/>
+        <ellipse cx="17.4" cy="41.2" rx="3.3" ry="2" fill="#EDB8B2" opacity=".72"/>
+        <ellipse cx="46.6" cy="41.2" rx="3.3" ry="2" fill="#EDB8B2" opacity=".72"/>
+
+        <!-- 一滴淡蓝小眼泪，委屈但不吓人 -->
+        <path d="M44.1 35.3c1.7 2.2 2.4 3.6 2 4.7-.4 1.2-3.5 1.2-3.9 0-.4-1.1.3-2.5 1.9-4.7Z" fill="#A9D4E5" opacity=".92"/>
+        <circle cx="43.4" cy="38.8" r=".7" fill="#FFFFFF" opacity=".75"/>
+      </symbol>
+
+      <symbol id="icon-slipper" viewBox="0 0 64 64">
+        <g transform="rotate(-12 32 32)">
+          <!-- 侧面的拖鞋鞋底：厚实、圆润、带奶白描边 -->
+          <path d="M9 41c1-5.5 5.5-9 11.5-9h23c6 0 10.5 3.5 11.5 9l.7 3.2c1 4.5-2.8 8.3-7.4 8.3H17.1c-4.6 0-8.4-3.8-7.4-8.3Z" fill="#C98E87" stroke="#FFF9F1" stroke-width="3.4" stroke-linejoin="round"/>
+          <!-- 半包住脚背的软鞋面，露脚跟，更像居家小拖鞋 -->
+          <path d="M18 41c0-10 6-17 15-17 7.5 0 12.5 5 14.5 13.5-4 2.8-7.7 2.9-11.5.6-2.3-1.4-4.6-1.3-7 .2-3.4 2.2-7 3.1-11 2.7Z" fill="#D59A93" stroke="#FFF9F1" stroke-width="3.4" stroke-linejoin="round"/>
+          <!-- 鞋口的奶白软边 & 深一点的脚背内里 -->
+          <path d="M19.5 40.5c3.5-.6 6.2.4 9 2.1 3.8 2.2 7.8 2.2 11.6.2 1.5-.8 3.1-1.2 4.7-1.4" fill="none" stroke="#FFF9F1" stroke-width="3" stroke-linecap="round"/>
+          <path d="M25 36.2c2.4-4 7-5 10.3-2.4 2.5 2 3.8 4.3 4.5 7-3.2 1.6-6.4 1.5-9.7-.2-1.7-.8-3.4-.8-5.1-.2Z" fill="#A96D67"/>
+          <!-- 鞋头高光 -->
+          <path d="M41.8 30.1c1.3 1.5 2.1 3.4 2.4 5.5" fill="none" stroke="#F6D2CD" stroke-width="2.4" stroke-linecap="round" opacity=".85"/>
+        </g>
+      </symbol>
+
+      <symbol id="icon-clock" viewBox="0 0 64 64">
+        <circle cx="32" cy="35" r="21" fill="#F2FAFD" stroke="#BBD0DB" stroke-width="3"/>
+        <path d="M32 21v15l10 5.5" fill="none" stroke="#7E9EAF" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M24 8h16" fill="none" stroke="#BBD0DB" stroke-width="3.4" stroke-linecap="round"/>
+        <rect x="28" y="4.5" width="8" height="5" rx="2.5" fill="#D7E8F0"/>
+        <circle cx="32" cy="36" r="3" fill="#93B2C1"/>
+      </symbol>
+
+      <symbol id="icon-refresh" viewBox="0 0 64 64">
+        <path d="M50 25a20 20 0 1 0 3.5 13" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M51 12v15H36" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+
+      <symbol id="icon-heart" viewBox="0 0 64 64">
+        <path d="M32 55.5S8 41.7 8 24.8C8 16 14.8 8.8 22.8 8.8c4.4 0 7.9 2.3 9.2 5.7 1.3-3.4 4.8-5.7 9.2-5.7 8 0 14.8 7.2 14.8 16 0 16.9-24 30.7-24 30.7Z" fill="currentColor"/>
+        <path d="M20 17c-2.7 1.5-4.2 3.7-4.4 6.3" fill="none" stroke="#FFFFFF" stroke-opacity=".35" stroke-width="3" stroke-linecap="round"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <!-- 背景装饰 -->
+  <div class="ambient" aria-hidden="true">
+    <span class="ambient-blob blob-1"></span>
+    <span class="ambient-blob blob-2"></span>
+    <span class="ambient-blob blob-3"></span>
+    <span class="ambient-heart heart-a">
+      <svg viewBox="0 0 64 64"><use href="#icon-heart"></use></svg>
+    </span>
+    <span class="ambient-heart heart-b">
+      <svg viewBox="0 0 64 64"><use href="#icon-heart"></use></svg>
+    </span>
+    <span class="ambient-heart heart-c">
+      <svg viewBox="0 0 64 64"><use href="#icon-heart"></use></svg>
+    </span>
+  </div>
+
+  <div class="page" id="page">
+    <header class="hero">
+      <div class="hero-badge" aria-hidden="true">
+        <span class="badge-tile">
+          <svg viewBox="0 0 64 64"><use href="#icon-panda"></use></svg>
+        </span>
+        <span class="badge-heart">♡</span>
+        <span class="badge-tile">
+          <svg viewBox="0 0 64 64"><use href="#icon-slipper"></use></svg>
+        </span>
+      </div>
+
+      <h1>凯凯 <span class="x-mark">×</span> 拖鞋 的专属扫雷乐园</h1>
+      <p class="subtitle">给扫雷高手凯凯<span class="sparkle">✨</span></p>
+
+      <div class="mode-tabs" role="group" aria-label="选择游戏模式">
+        <button class="mode-tab" id="soloTab" type="button" data-mode="solo" aria-pressed="true">单机模式</button>
+        <button class="mode-tab" id="battleTab" type="button" data-mode="battle" aria-pressed="false">对战模式</button>
+      </div>
+    </header>
+
+    <main class="game-card">
+      <!-- 左上计时器 / 右上剩余地雷 -->
+      <div class="game-top" aria-label="游戏数据">
+        <div class="stat-card">
+          <span class="stat-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64"><use href="#icon-clock"></use></svg>
+          </span>
+          <span class="stat-copy">
+            <span class="stat-label">计时器</span>
+            <output class="stat-value" id="timer" aria-label="计时器">00:00</output>
+          </span>
+        </div>
+
+        <div class="stat-card mine-stat">
+          <span class="stat-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64"><use href="#icon-panda"></use></svg>
+          </span>
+          <span class="stat-copy">
+            <span class="stat-label">剩余地雷</span>
+            <output class="stat-value" id="mineCounter" aria-label="剩余地雷">080</output>
+          </span>
+        </div>
+      </div>
+
+      <!-- 重置按钮：下方居中；hover 变粉并显示小字 -->
+      <div class="reset-row">
+        <button class="reset-button" id="resetBtn" type="button"
+                aria-label="重新开始"
+                aria-describedby="resetTooltip">
+          <svg class="reset-icon" viewBox="0 0 64 64" aria-hidden="true">
+            <use href="#icon-refresh"></use>
+          </svg>
+          <span>重新开始</span>
+          <span class="reset-tooltip" id="resetTooltip" role="tooltip">再来一局挑战凯凯</span>
+        </button>
+      </div>
+
+      <!-- 对战模式控制区 -->
+      <section class="battle-panel" id="battlePanel" hidden aria-label="种子竞速对战设置">
+        <div class="battle-head">
+          <div class="identity-group">
+            <span class="battle-label">我是</span>
+            <div class="identity-options" role="group" aria-label="选择玩家身份">
+              <button class="identity-chip" type="button" data-player="kaikai" aria-pressed="false">凯凯</button>
+              <button class="identity-chip" type="button" data-player="tuoxie" aria-pressed="true">拖鞋</button>
+            </div>
+          </div>
+
+          <div class="seed-current">
+            <span>本局种子</span>
+            <code class="active-seed" id="activeSeed">—</code>
+          </div>
+        </div>
+
+        <div class="battle-controls">
+          <button class="battle-btn primary" id="generateSeedBtn" type="button">生成对战种子</button>
+          <button class="battle-btn" id="copySeedBtn" type="button" disabled>复制种子</button>
+
+          <form class="seed-join" id="seedJoinForm" novalidate>
+            <input class="seed-input" id="seedInput" type="text" maxlength="12"
+                   placeholder="输入对方发来的种子"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false"
+                   aria-label="输入对战种子">
+            <button class="battle-btn" id="joinSeedBtn" type="submit">加入对局</button>
+          </form>
+        </div>
+
+        <p class="seed-feedback" id="seedFeedback" role="alert" hidden></p>
+        <p class="battle-tip">
+          同一颗种子，同一片雷区。各自计时，用时更短者胜。对战固定 20×20 / 80 雷，无首点保护。
+        </p>
+
+        <div class="race-dock" id="raceDock" hidden>
+          <span class="race-dock-text" id="raceDockText"></span>
+          <button class="race-dock-btn" id="openRaceResultBtn" type="button">查看结算</button>
+        </div>
+      </section>
+
+      <!-- 雷区 -->
+      <section class="board-shell" id="boardShell" aria-label="雷区">
+        <div class="board" id="board" role="group" aria-label="扫雷棋盘" aria-describedby="boardHelp"></div>
+      </section>
+
+      <div class="below-board">
+        <p class="status" id="statusText" data-mood="idle">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusLabel">第一格一定安全，轻轻点开吧</span>
+        </p>
+        <p class="control-hint" id="boardHelp">
+          <span class="desktop-hint">左键翻开 · 右键放 / 收小拖鞋 · 双击数字快速展开</span>
+          <span class="touch-hint">轻点翻开 · 长按放 / 收小拖鞋 · 大棋盘可左右滑动</span>
+        </p>
+      </div>
+
+      <!-- 单人自定义棋盘（对战公平起见固定 20×20/80） -->
+      <details class="customizer" id="customizer">
+        <summary>想换一张棋盘？自定义单机雷区</summary>
+        <form class="custom-form" id="customForm" novalidate>
+          <label class="custom-field">
+            行
+            <input id="rowsInput" type="number" min="5" max="30" step="1" value="20" inputmode="numeric" autocomplete="off" aria-label="行数">
+          </label>
+          <label class="custom-field">
+            列
+            <input id="colsInput" type="number" min="5" max="30" step="1" value="20" inputmode="numeric" autocomplete="off" aria-label="列数">
+          </label>
+          <label class="custom-field">
+            雷
+            <input class="mines" id="minesInput" type="number" min="1" step="1" value="80" inputmode="numeric" autocomplete="off" aria-label="地雷数">
+          </label>
+          <button class="apply-button" type="submit">布置新雷区</button>
+          <p class="form-error" id="customError" role="alert" hidden></p>
+        </form>
+      </details>
+    </main>
+
+    <footer class="footer">
+      <span class="footer-heart" aria-hidden="true">♡</span>
+      <span>拖鞋&凯凯</span>
+      <span class="footer-heart" aria-hidden="true">♡</span>
+    </footer>
+  </div>
+
+  <!-- 页面飘落爱心层（胜利彩蛋） -->
+  <div class="falling-hearts" id="fallingHearts" aria-hidden="true"></div>
+
+  <!-- 结果弹窗 -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-card" id="modalCard" role="dialog" aria-modal="true"
+         aria-labelledby="modalTitle" aria-describedby="modalDesc" tabindex="-1">
+      <div class="modal-hearts" id="modalHearts" aria-hidden="true"></div>
+      <button class="modal-close" id="modalClose" type="button" aria-label="关闭弹窗">×</button>
+      <div class="modal-inner">
+        <div class="modal-mascot" id="modalMascot" aria-hidden="true"></div>
+        <h2 class="modal-title" id="modalTitle">太棒啦！🎉</h2>
+        <p class="modal-desc" id="modalDesc"></p>
+
+        <div class="race-exchange" id="raceExchange" hidden>
+          <div class="exchange-row">
+            <span class="exchange-label">我的战绩码</span>
+            <code class="my-code" id="myRaceCode"></code>
+            <button class="mini-copy-btn" id="copyRaceCodeBtn" type="button">复制</button>
+          </div>
+          <div class="exchange-row">
+            <label class="sr-only" for="opponentCodeInput">粘贴对方的战绩码</label>
+            <input class="opponent-code-input" id="opponentCodeInput" type="text"
+                   placeholder="粘贴 TA 的战绩码，自动结算"
+                   autocomplete="off" spellcheck="false">
+            <button class="exchange-submit" id="submitRaceCodeBtn" type="button">自动结算</button>
+          </div>
+          <p class="exchange-error" id="exchangeError" role="alert" hidden></p>
+          <p class="exchange-help">
+            跨设备请交换战绩码；同一浏览器双标签页会自动同步，战绩不会保存。
+          </p>
+        </div>
+
+        <button class="modal-primary" id="modalPrimary" type="button">再来一局</button>
+        <p class="modal-note" id="modalNote"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 轻提示 -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- 屏幕阅读器播报区 -->
+  <div class="sr-only" id="liveRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* =========================================================
+       1. 常量与预设
+       ========================================================= */
+    const DEFAULT_GAME = { rows: 20, cols: 20, mines: 80 };
+    const BATTLE_GAME = { rows: 20, cols: 20, mines: 80 };
+    const LIMITS = { minRows: 5, maxRows: 30, minCols: 5, maxCols: 30, minMines: 1 };
+    const PLAYERS = {
+      kaikai: { name: '凯凯', code: 'K' },
+      tuoxie: { name: '拖鞋', code: 'T' }
+    };
+    const PLAYER_KEYS = Object.keys(PLAYERS);
+    const RACE_CHANNEL_NAME = 'kaikai-tuoxie-minesweeper-race-v1';
+    const SEED_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const ICON_MARKUP = {
+      slipper: (className) => `<svg class="${className}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#icon-slipper"></use></svg>`,
+      panda: (className) => `<svg class="${className}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#icon-panda"></use></svg>`,
+      heart: (className) => `<svg class="${className}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#icon-heart"></use></svg>`
+    };
+
+    /* =========================================================
+       2. DOM 引用
+       ========================================================= */
+    const dom = {
+      page: document.getElementById('page'),
+      soloTab: document.getElementById('soloTab'),
+      battleTab: document.getElementById('battleTab'),
+      battlePanel: document.getElementById('battlePanel'),
+      identityButtons: Array.from(document.querySelectorAll('.identity-chip')),
+      activeSeed: document.getElementById('activeSeed'),
+      generateSeedBtn: document.getElementById('generateSeedBtn'),
+      copySeedBtn: document.getElementById('copySeedBtn'),
+      seedJoinForm: document.getElementById('seedJoinForm'),
+      seedInput: document.getElementById('seedInput'),
+      joinSeedBtn: document.getElementById('joinSeedBtn'),
+      seedFeedback: document.getElementById('seedFeedback'),
+      raceDock: document.getElementById('raceDock'),
+      raceDockText: document.getElementById('raceDockText'),
+      openRaceResultBtn: document.getElementById('openRaceResultBtn'),
+      timer: document.getElementById('timer'),
+      mineCounter: document.getElementById('mineCounter'),
+      resetBtn: document.getElementById('resetBtn'),
+      boardShell: document.getElementById('boardShell'),
+      board: document.getElementById('board'),
+      statusText: document.getElementById('statusText'),
+      statusLabel: document.getElementById('statusLabel'),
+      customizer: document.getElementById('customizer'),
+      customForm: document.getElementById('customForm'),
+      rowsInput: document.getElementById('rowsInput'),
+      colsInput: document.getElementById('colsInput'),
+      minesInput: document.getElementById('minesInput'),
+      customError: document.getElementById('customError'),
+      footer: document.querySelector('.footer'),
+      fallingHearts: document.getElementById('fallingHearts'),
+      modal: document.getElementById('modal'),
+      modalCard: document.getElementById('modalCard'),
+      modalClose: document.getElementById('modalClose'),
+      modalMascot: document.getElementById('modalMascot'),
+      modalTitle: document.getElementById('modalTitle'),
+      modalDesc: document.getElementById('modalDesc'),
+      modalNote: document.getElementById('modalNote'),
+      raceExchange: document.getElementById('raceExchange'),
+      myRaceCode: document.getElementById('myRaceCode'),
+      copyRaceCodeBtn: document.getElementById('copyRaceCodeBtn'),
+      opponentCodeInput: document.getElementById('opponentCodeInput'),
+      submitRaceCodeBtn: document.getElementById('submitRaceCodeBtn'),
+      exchangeError: document.getElementById('exchangeError'),
+      modalPrimary: document.getElementById('modalPrimary'),
+      modalHearts: document.getElementById('modalHearts'),
+      toast: document.getElementById('toast'),
+      liveRegion: document.getElementById('liveRegion')
+    };
+
+    /* =========================================================
+       3. 应用状态
+       ========================================================= */
+    const app = {
+      mode: 'solo',                   // solo | battle
+      identity: 'tuoxie',             // kaikai | tuoxie
+      soloConfig: { ...DEFAULT_GAME },// 上一次单机使用的棋盘规格
+      battleSeed: null,               // 当前对战种子
+      raceOwn: null,                  // { seed, player, seconds, code }
+      raceOpponent: null,             // { seed, player, seconds, code }
+      channel: null,                  // 同浏览器跨标签页同步
+      modalOpen: false,
+      modalType: null,                // solo-win | battle | lose
+      modalPreviousFocus: null,
+      modalShowTimer: null,
+      modalHideTimer: null,
+      toastTimer: null
+    };
+
+    let game = null;
+    let cells = [];
+    let resizeFrame = null;
+    let lastShellWidth = 0;
+
+    // 触屏长按状态
+    let pressTimer = null;
+    let pressedCell = null;
+    let pressStartX = 0;
+    let pressStartY = 0;
+    let suppressClickUntil = 0;
+    let suppressContextUntil = 0;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    /* =========================================================
+       4. 通用工具
+       ========================================================= */
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, '0');
+    }
+
+    function formatTimer(seconds) {
+      const safe = Math.max(0, Math.floor(seconds));
+      return `${pad2(Math.floor(safe / 60))}:${pad2(safe % 60)}`;
+    }
+
+    function formatMineNumber(value) {
+      const safe = clamp(value, -99, 999);
+      return safe < 0
+        ? '-' + String(Math.abs(safe)).padStart(2, '0')
+        : String(safe).padStart(3, '0');
+    }
+
+    function announce(message) {
+      dom.liveRegion.textContent = '';
+      window.setTimeout(() => {
+        dom.liveRegion.textContent = message;
+      }, 30);
+    }
+
+    function showToast(message) {
+      window.clearTimeout(app.toastTimer);
+      dom.toast.textContent = message;
+      dom.toast.classList.add('is-visible');
+      app.toastTimer = window.setTimeout(() => {
+        dom.toast.classList.remove('is-visible');
+      }, 2200);
+    }
+
+    function otherPlayerName() {
+      const otherKey = app.identity === 'kaikai' ? 'tuoxie' : 'kaikai';
+      return PLAYERS[otherKey].name;
+    }
+
+    function getNeighbors(index) {
+      const row = Math.floor(index / game.cols);
+      const col = index % game.cols;
+      const result = [];
+      for (let dr = -1; dr <= 1; dr += 1) {
+        for (let dc = -1; dc <= 1; dc += 1) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = row + dr;
+          const nc = col + dc;
+          if (nr >= 0 && nr < game.rows && nc >= 0 && nc < game.cols) {
+            result.push(nr * game.cols + nc);
+          }
+        }
+      }
+      return result;
+    }
+
+    /* =========================================================
+       5. 种子 & 伪随机数
+       ========================================================= */
+    // 生成 6 位、方便口头/手输的种子码（去掉易混淆字符）。
+    function generateSeedCode() {
+      let result = '';
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+        const values = new Uint32Array(6);
+        window.crypto.getRandomValues(values);
+        for (let i = 0; i < 6; i += 1) {
+          result += SEED_ALPHABET[values[i] % SEED_ALPHABET.length];
+        }
+      } else {
+        for (let i = 0; i < 6; i += 1) {
+          result += SEED_ALPHABET[Math.floor(Math.random() * SEED_ALPHABET.length)];
+        }
+      }
+      return result;
+    }
+
+    // 规范化玩家输入的种子码：去空白、转大写。
+    function normalizeSeed(raw) {
+      const seed = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
+      if (!/^[A-Z0-9]{4,12}$/.test(seed)) return null;
+      return seed;
+    }
+
+    // FNV-1a -> Mulberry32：轻量、稳定、跨浏览器结果一致。
+    function hashSeed(seed) {
+      let hash = 2166136261 >>> 0;
+      for (let i = 0; i < seed.length; i += 1) {
+        hash ^= seed.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function makeSeededRandom(seed) {
+      let state = hashSeed(seed);
+      return function random() {
+        state = (state + 0x6D2B79F5) | 0;
+        let t = Math.imul(state ^ (state >>> 15), 1 | state);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // 对战种子固定雷盘：同一 seed 在任何设备都得到相同结果。
+    function placeSeededMines(seed) {
+      const total = game.rows * game.cols;
+      const random = makeSeededRandom(seed);
+      const pool = Array.from({ length: total }, (_, index) => index);
+
+      for (let i = pool.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(random() * (i + 1));
+        const temp = pool[i];
+        pool[i] = pool[j];
+        pool[j] = temp;
+      }
+
+      for (let i = 0; i < game.mineCount; i += 1) {
+        game.grid[pool[i]].mine = true;
+      }
+      calculateNumbers();
+    }
+
+    // 单机随机雷盘：首点及周围尽量安全，保证第一下不会踩雷。
+    function placeRandomMines(safeIndex) {
+      const total = game.rows * game.cols;
+      const safeZone = new Set([safeIndex]);
+
+      for (const neighbor of getNeighbors(safeIndex)) {
+        if (total - (safeZone.size + 1) >= game.mineCount) {
+          safeZone.add(neighbor);
+        }
+      }
+
+      const candidates = [];
+      for (let index = 0; index < total; index += 1) {
+        if (!safeZone.has(index)) candidates.push(index);
+      }
+
+      for (let i = candidates.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = candidates[i];
+        candidates[i] = candidates[j];
+        candidates[j] = temp;
+      }
+
+      for (let i = 0; i < game.mineCount; i += 1) {
+        game.grid[candidates[i]].mine = true;
+      }
+      calculateNumbers();
+    }
+
+    function calculateNumbers() {
+      for (let index = 0; index < game.grid.length; index += 1) {
+        let count = 0;
+        for (const neighbor of getNeighbors(index)) {
+          if (game.grid[neighbor].mine) count += 1;
+        }
+        game.grid[index].nearby = count;
+      }
+    }
+
+    /* =========================================================
+       6. 创建新游戏
+       ========================================================= */
+    function initNewGame({ mode, rows, cols, mines, seed = null }) {
+      // 清理上一局
+      stopTimer();
+      window.clearTimeout(app.modalShowTimer);
+      app.modalShowTimer = null;
+      closeModal({ immediate: true, restoreFocus: false });
+      clearFallingHearts();
+      clearLongPress();
+      app.raceOwn = null;
+      app.raceOpponent = null;
+      hideRaceDock();
+      clearSeedFeedback();
+      clearCustomError();
+
+      app.mode = mode;
+      if (mode === 'battle') {
+        rows = BATTLE_GAME.rows;
+        cols = BATTLE_GAME.cols;
+        mines = BATTLE_GAME.mines;
+        app.battleSeed = seed || app.battleSeed || generateSeedCode();
+      } else {
+        app.battleSeed = null;
+      }
+
+      game = {
+        mode,
+        rows,
+        cols,
+        mineCount: mines,
+        seed: mode === 'battle' ? app.battleSeed : null,
+        grid: [],
+        started: false,
+        startedAt: 0,
+        seconds: 0,
+        timerId: null,
+        over: false,
+        won: false,
+        flagCount: 0,
+        revealedSafe: 0
+      };
+
+      for (let index = 0; index < rows * cols; index += 1) {
+        game.grid.push({
+          index,
+          row: Math.floor(index / cols),
+          col: index % cols,
+          mine: false,
+          nearby: 0,
+          revealed: false,
+          flagged: false,
+          shownMine: false,
+          wrongFlag: false,
+          hit: false
+        });
+      }
+
+      // 对战盘在开始前就根据种子生成；单机盘在第一次点击后才生成。
+      if (mode === 'battle') {
+        placeSeededMines(game.seed);
+      }
+
+      buildBoard();
+      resetHud();
+      updateModeUI();
+      updateIdentityUI();
+      updateSeedUI();
+      updateStatus();
+      dom.customizer.open = false;
+
+      // 单机自定义区域只在单机显示
+      dom.customizer.hidden = mode !== 'solo';
+      dom.battlePanel.hidden = mode !== 'battle';
+
+      requestAnimationFrame(fitBoard);
+      announce(mode === 'battle'
+        ? `对战模式已开始，种子 ${game.seed}，20 行 20 列，80 颗地雷。`
+        : `单机模式已开始，${rows} 行 ${cols} 列，${mines} 颗地雷。第一格一定安全。`);
+
+      if (mode === 'battle') {
+        // 同一浏览器另一标签页若已提前完成，可以收到它广播的成绩。
+        postRaceQuery();
+        requestAnimationFrame(updateRaceDock);
+      }
+    }
+
+    function buildBoard() {
+      dom.board.innerHTML = '';
+      cells = new Array(game.grid.length);
+      const fragment = document.createDocumentFragment();
+
+      for (let index = 0; index < game.grid.length; index += 1) {
+        const cell = game.grid[index];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cell';
+        button.dataset.index = String(index);
+        button.tabIndex = index === 0 ? 0 : -1;
+        setCellLabel(button, cell);
+        cells[index] = button;
+        fragment.appendChild(button);
+      }
+
+      dom.board.style.setProperty('--cols', String(game.cols));
+      dom.board.setAttribute(
+        'aria-label',
+        `扫雷棋盘，${game.rows} 行 ${game.cols} 列，共 ${game.mineCount} 颗地雷`
+      );
+      dom.board.classList.remove('is-over', 'is-cleared');
+      dom.board.appendChild(fragment);
+      fitBoard();
+    }
+
+    function resetHud() {
+      dom.timer.textContent = '00:00';
+      dom.timer.setAttribute('aria-label', '计时器 0 秒');
+      dom.mineCounter.textContent = formatMineNumber(game.mineCount);
+      dom.mineCounter.setAttribute('aria-label', `剩余 ${game.mineCount} 颗地雷`);
+    }
+
+    function updateModeUI() {
+      const isSolo = app.mode === 'solo';
+      dom.soloTab.setAttribute('aria-pressed', isSolo ? 'true' : 'false');
+      dom.battleTab.setAttribute('aria-pressed', isSolo ? 'false' : 'true');
+      dom.battlePanel.hidden = !isSolo ? false : true;
+      dom.customizer.hidden = !isSolo;
+    }
+
+    function switchMode(mode) {
+      if (!game || mode === app.mode) return;
+      app.mode = mode;
+
+      if (mode === 'battle') {
+        const seed = generateSeedCode();
+        initNewGame({ mode: 'battle', ...BATTLE_GAME, seed });
+      } else {
+        const config = app.soloConfig;
+        initNewGame({ mode: 'solo', ...config });
+      }
+    }
+
+    /* =========================================================
+       7. 尺寸适配
+       ========================================================= */
+    function fitBoard() {
+      if (!game || !cells.length) return;
+
+      const shellStyles = window.getComputedStyle(dom.boardShell);
+      const horizontalPadding =
+        parseFloat(shellStyles.paddingLeft) + parseFloat(shellStyles.paddingRight);
+      const available = Math.max(160, dom.boardShell.clientWidth - horizontalPadding - 8);
+      const gap = available < 500 ? 4 : 5;
+      const minCell = 16;
+      // 列数少时可以稍微放大一点，但 20×20 保持紧凑、整盘可见。
+      const maxCell = game.cols <= 10 ? 44 : game.cols <= 16 ? 34 : 30;
+      const rawCell = Math.floor((available - (game.cols - 1) * gap) / game.cols);
+      const size = clamp(rawCell, minCell, maxCell);
+
+      dom.board.style.setProperty('--gap', `${gap}px`);
+      dom.board.style.setProperty('--cell', `${size}px`);
+      dom.board.style.setProperty('--cols', String(game.cols));
+    }
+
+    /* =========================================================
+       8. 渲染单格
+       ========================================================= */
+    function setCellLabel(element, cell) {
+      const position = `第 ${cell.row + 1} 行，第 ${cell.col + 1} 列`;
+      let stateText;
+
+      if (cell.hit) stateText = '踩中的小熊猫';
+      else if (cell.wrongFlag) stateText = '放错位置的小拖鞋';
+      else if (cell.flagged) stateText = '放了小拖鞋';
+      else if (cell.shownMine) stateText = '小熊猫地雷';
+      else if (cell.revealed) stateText = cell.nearby > 0 ? `数字 ${cell.nearby}` : '空白';
+      else stateText = '未翻开';
+
+      element.setAttribute('aria-label', `${position}，${stateText}`);
+    }
+
+    function renderCell(index, animateOpen = false) {
+      const cell = game.grid[index];
+      const element = cells[index];
+      if (!cell || !element) return;
+
+      element.className = 'cell';
+      setCellLabel(element, cell);
+
+      let content = '';
+
+      if (cell.revealed && cell.nearby > 0) {
+        content = `<span class="cell-content"><span class="cell-number n${cell.nearby}">${cell.nearby}</span></span>`;
+      } else if (cell.flagged) {
+        content = `<span class="cell-content">${ICON_MARKUP.slipper('cell-icon slipper-icon')}</span>`;
+      } else if (cell.shownMine) {
+        content = `<span class="cell-content">${ICON_MARKUP.panda('cell-icon panda-icon')}</span>`;
+      } else if (cell.revealed) {
+        content = '<span class="cell-content"></span>';
+      }
+
+      if (cell.revealed) element.classList.add('is-revealed');
+      if (cell.flagged) element.classList.add('is-flagged');
+      if (cell.wrongFlag) element.classList.add('is-wrong');
+      if (cell.shownMine) element.classList.add('is-mine');
+      if (cell.hit) element.classList.add('is-hit');
+
+      if (cell.wrongFlag) {
+        content += '<span class="wrong-mark" aria-hidden="true">×</span>';
+      }
+
+      element.innerHTML = content;
+
+      if (animateOpen) {
+        element.classList.add('just-opened');
+        const order = Number(element.dataset.openOrder || 0);
+        element.style.setProperty('--reveal-delay', `${Math.min(order * 9, 220)}ms`);
+      }
+
+      if (cell.shownMine && !cell.revealed) {
+        const delay = Math.min((index % 14) * 12, 160);
+        element.style.setProperty('--mine-delay', `${delay}ms`);
+      }
+    }
+
+    function updateMineCounter(bump = false) {
+      const remaining = game.mineCount - game.flagCount;
+      dom.mineCounter.textContent = formatMineNumber(remaining);
+      dom.mineCounter.setAttribute(
+        'aria-label',
+        remaining >= 0
+          ? `剩余 ${remaining} 颗地雷`
+          : `拖鞋标记比地雷数多 ${Math.abs(remaining)} 个`
+      );
+
+      if (bump) {
+        dom.mineCounter.classList.remove('bump');
+        void dom.mineCounter.offsetWidth;
+        dom.mineCounter.classList.add('bump');
+      }
+    }
+
+    function updateTimerDisplay() {
+      dom.timer.textContent = formatTimer(game.seconds);
+      dom.timer.setAttribute('aria-label', `计时器 ${game.seconds} 秒`);
+    }
+
+    function updateStatus() {
+      if (!game || game.over) return;
+
+      if (!game.started) {
+        setStatus(
+          game.mode === 'battle'
+            ? '竞速中 · 同一颗种子，用时更短者胜'
+            : '第一格一定安全，轻轻点开吧',
+          'idle'
+        );
+        return;
+      }
+
+      const safeTotal = game.rows * game.cols - game.mineCount;
+      setStatus(
+        game.mode === 'battle'
+          ? `已翻开 ${game.revealedSafe} / ${safeTotal} 格 · ${PLAYERS[app.identity].name}加油`
+          : `已翻开 ${game.revealedSafe} / ${safeTotal} 格 · 慢慢来`,
+        'play'
+      );
+    }
+
+    function setStatus(text, mood) {
+      dom.statusLabel.textContent = text;
+      dom.statusText.dataset.mood = mood;
+    }
+
+    /* =========================================================
+       9. 计时器
+       ========================================================= */
+    function startTimer() {
+      game.started = true;
+      game.startedAt = Date.now();
+      updateIdentityUI(true);
+
+      game.timerId = window.setInterval(() => {
+        if (!game || !game.started || game.over) return;
+        const elapsed = Math.floor((Date.now() - game.startedAt) / 1000);
+        if (elapsed !== game.seconds) {
+          game.seconds = elapsed;
+          updateTimerDisplay();
+        }
+      }, 200);
+    }
+
+    function stopTimer() {
+      if (!game) return;
+      if (game.timerId) {
+        window.clearInterval(game.timerId);
+        game.timerId = null;
+      }
+      if (game.started && game.startedAt) {
+        game.seconds = Math.max(0, Math.floor((Date.now() - game.startedAt) / 1000));
+        updateTimerDisplay();
+      }
+    }
+
+    /* =========================================================
+       10. 翻开 / 标记 / 空白扩散
+       ========================================================= */
+    function revealCell(index) {
+      if (!game || game.over) return;
+      const cell = game.grid[index];
+      if (!cell || cell.revealed || cell.flagged) return;
+
+      if (!game.started) {
+        if (game.mode === 'solo') {
+          // 单机模式首点保护
+          placeRandomMines(index);
+        }
+        // 对战模式在 initNewGame 里已经按种子固定布雷，不改变雷盘。
+        startTimer();
+      }
+
+      if (cell.mine) {
+        loseGame(index);
+        return;
+      }
+
+      openSafeArea(index);
+      checkWin();
+      if (!game.over) updateStatus();
+    }
+
+    function openSafeArea(startIndex) {
+      const queue = [startIndex];
+      let head = 0;
+      const seen = new Set(queue);
+      const opened = [];
+
+      while (head < queue.length) {
+        const index = queue[head];
+        head += 1;
+        const cell = game.grid[index];
+        if (cell.revealed || cell.flagged || cell.mine) continue;
+
+        cell.revealed = true;
+        game.revealedSafe += 1;
+        opened.push(index);
+
+        if (cell.nearby === 0) {
+          for (const neighbor of getNeighbors(index)) {
+            if (!seen.has(neighbor)) {
+              const next = game.grid[neighbor];
+              if (!next.revealed && !next.flagged && !next.mine) {
+                seen.add(neighbor);
+                queue.push(neighbor);
+              }
+            }
+          }
+        }
+      }
+
+      // 先标记顺序，再渲染，让相邻翻开的格子轻微递进淡入。
+      opened.forEach((index, order) => {
+        cells[index].dataset.openOrder = String(order);
+        renderCell(index, true);
+      });
+      updateMineCounter(false);
+    }
+
+    function toggleFlag(index) {
+      if (!game || game.over) return;
+      const cell = game.grid[index];
+      if (!cell || cell.revealed) return;
+
+      cell.flagged = !cell.flagged;
+      game.flagCount += cell.flagged ? 1 : -1;
+      renderCell(index);
+      updateMineCounter(true);
+      updateStatus();
+
+      announce(cell.flagged
+        ? `第 ${cell.row + 1} 行，第 ${cell.col + 1} 列放上了小拖鞋。`
+        : `第 ${cell.row + 1} 行，第 ${cell.col + 1} 列收起了小拖鞋。`);
+    }
+
+    function chordReveal(index) {
+      if (!game || game.over || !game.started) return;
+      const cell = game.grid[index];
+      if (!cell || !cell.revealed || cell.nearby === 0) return;
+
+      const neighbors = getNeighbors(index);
+      const flagCount = neighbors.filter((i) => game.grid[i].flagged).length;
+      if (flagCount !== cell.nearby) {
+        cells[index].classList.remove('is-nope');
+        void cells[index].offsetWidth;
+        cells[index].classList.add('is-nope');
+        window.setTimeout(() => cells[index].classList.remove('is-nope'), 260);
+        return;
+      }
+
+      const hidden = neighbors.filter((i) => !game.grid[i].revealed && !game.grid[i].flagged);
+      if (!hidden.length) return;
+
+      const mine = hidden.find((i) => game.grid[i].mine);
+      if (mine !== undefined) {
+        loseGame(mine);
+        return;
+      }
+
+      hidden.forEach((i) => openSafeArea(i));
+      checkWin();
+      if (!game.over) updateStatus();
+    }
+
+    function checkWin() {
+      if (!game || game.over) return;
+      const safeTotal = game.rows * game.cols - game.mineCount;
+      if (game.revealedSafe >= safeTotal) winGame();
+    }
+
+    /* =========================================================
+       11. 胜负处理
+       ========================================================= */
+    function loseGame(hitIndex) {
+      if (!game || game.over) return;
+      game.over = true;
+      game.won = false;
+      stopTimer();
+      updateIdentityUI();
+
+      const hitCell = game.grid[hitIndex];
+      if (hitCell) {
+        hitCell.hit = true;
+        hitCell.shownMine = true;
+      }
+
+      game.grid.forEach((cell) => {
+        if (cell.mine) cell.shownMine = true;
+        if (cell.flagged && !cell.mine) cell.wrongFlag = true;
+      });
+
+      game.grid.forEach((cell, index) => {
+        if (cell.hit || cell.wrongFlag || (cell.shownMine && !cell.revealed && !cell.flagged)) {
+          renderCell(index);
+        }
+      });
+
+      dom.board.classList.add('is-over');
+      setStatus('踩到小熊猫啦，拍拍灰再来一次吧', 'lose');
+      dom.mineCounter.classList.remove('bump');
+
+      announce(`踩到地雷，游戏结束。本局用时 ${game.seconds} 秒。`);
+
+      window.clearTimeout(app.modalShowTimer);
+      app.modalShowTimer = window.setTimeout(() => {
+        if (game && game.over && !game.won) openModal('lose');
+      }, 720);
+    }
+
+    function winGame() {
+      if (!game || game.over) return;
+      game.over = true;
+      game.won = true;
+      stopTimer();
+      updateIdentityUI();
+
+      // 胜利时自动为所有地雷盖上小拖鞋。
+      game.grid.forEach((cell, index) => {
+        if (cell.mine && !cell.flagged) {
+          cell.flagged = true;
+          game.flagCount += 1;
+          renderCell(index);
+        }
+      });
+      game.flagCount = game.mineCount;
+
+      updateMineCounter(false);
+      dom.board.classList.add('is-over', 'is-cleared');
+      setStatus(`全部清空啦！用时 ${game.seconds} 秒`, 'win');
+      spawnFallingHearts();
+      announce(`全部安全格都翻开啦！用时 ${game.seconds} 秒。`);
+
+      if (game.mode === 'battle') {
+        recordOwnRaceResult();
+      }
+
+      window.clearTimeout(app.modalShowTimer);
+      app.modalShowTimer = window.setTimeout(() => {
+        if (!game || !game.over || !game.won) return;
+        if (game.mode === 'battle') openBattleResultModal();
+        else openModal('solo-win');
+      }, 720);
+    }
+
+    /* =========================================================
+       12. 对战：战绩码 & 跨标签同步
+       ========================================================= */
+    function encodeRaceResult(result) {
+      return `${result.seed}-${PLAYERS[result.player].code}-${result.seconds}`;
+    }
+
+    function decodeRaceResult(raw) {
+      const code = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
+      const match = code.match(/^([A-Z0-9]{4,12})-([KT])-(\d{1,5})$/);
+      if (!match) return null;
+
+      const player = PLAYER_KEYS.find((key) => PLAYERS[key].code === match[2]);
+      if (!player) return null;
+
+      const seconds = Number(match[3]);
+      if (!Number.isInteger(seconds) || seconds < 0) return null;
+
+      return {
+        seed: match[1],
+        player,
+        seconds,
+        code: `${match[1]}-${match[2]}-${seconds}`
+      };
+    }
+
+    function recordOwnRaceResult() {
+      if (!game || game.mode !== 'battle' || !game.seed) return;
+
+      const result = {
+        seed: game.seed,
+        player: app.identity,
+        seconds: game.seconds
+      };
+      result.code = encodeRaceResult(result);
+      app.raceOwn = result;
+      updateRaceDock();
+      postRaceResult(result);
+    }
+
+    function acceptOpponentResult(result, { fromRemote = false } = {}) {
+      if (!game || game.mode !== 'battle' || !game.seed) return false;
+      if (!result || result.seed !== game.seed) return false;
+      if (!PLAYER_KEYS.includes(result.player) || result.player === app.identity) return false;
+      if (!Number.isInteger(result.seconds) || result.seconds < 0) return false;
+
+      const normalized = {
+        seed: result.seed,
+        player: result.player,
+        seconds: result.seconds,
+        code: encodeRaceResult(result)
+      };
+
+      // 已经结算过相同成绩就不重复操作
+      if (
+        app.raceOpponent &&
+        app.raceOpponent.player === normalized.player &&
+        app.raceOpponent.seconds === normalized.seconds
+      ) {
+        return true;
+      }
+
+      app.raceOpponent = normalized;
+      updateRaceDock();
+
+      if (game.over && game.won) {
+        if (app.modalOpen && app.modalType === 'battle') {
+          // 弹窗正开着：直接自动更新为最终结算
+          renderBattleModalContent();
+          announce('收到对方的战绩，对战结果已经自动结算。');
+        } else if (app.modalOpen && app.modalType !== 'battle') {
+          // 其他弹窗时不打扰
+        } else {
+          showToast(`收到${PLAYERS[normalized.player].name}的战绩，点“查看结算”看结果`);
+          announce(`收到${PLAYERS[normalized.player].name}的战绩，可以查看对战结算了。`);
+        }
+      }
+
+      if (fromRemote) {
+        showToast(`${PLAYERS[normalized.player].name} 的成绩已同步`);
+      }
+      return true;
+    }
+
+    function initRaceChannel() {
+      if (!('BroadcastChannel' in window)) return;
+      try {
+        app.channel = new BroadcastChannel(RACE_CHANNEL_NAME);
+        app.channel.addEventListener('message', (event) => {
+          const data = event.data;
+          if (!data || !data.type) return;
+
+          if (data.type === 'race-result') {
+            acceptOpponentResult(data.result, { fromRemote: true });
+          } else if (data.type === 'race-query') {
+            // 新开的标签页询问当前种子是否已有战绩
+            if (
+              game &&
+              game.mode === 'battle' &&
+              game.seed === data.seed &&
+              app.raceOwn &&
+              data.player !== app.identity
+            ) {
+              postRaceResult(app.raceOwn);
+            }
+          }
+        });
+      } catch (error) {
+        app.channel = null;
+      }
+    }
+
+    function postRaceResult(result) {
+      if (!app.channel) return;
+      try {
+        app.channel.postMessage({ type: 'race-result', result });
+      } catch (error) {
+        // BroadcastChannel 不可用时，仍可使用手动战绩码。
+      }
+    }
+
+    function postRaceQuery() {
+      if (!app.channel || !game || game.mode !== 'battle' || !game.seed) return;
+      try {
+        app.channel.postMessage({
+          type: 'race-query',
+          seed: game.seed,
+          player: app.identity
+        });
+      } catch (error) {
+        // 静默失败
+      }
+    }
+
+    function getRaceResultsMap() {
+      const map = {};
+      [app.raceOwn, app.raceOpponent].forEach((result) => {
+        if (result && result.seed === game?.seed) map[result.player] = result;
+      });
+      return map;
+    }
+
+    function getBattleSettlement() {
+      if (!game || game.mode !== 'battle' || !game.seed) return null;
+      const results = getRaceResultsMap();
+      if (!results.kaikai || !results.tuoxie) return null;
+
+      const kaikaiTime = results.kaikai.seconds;
+      const tuoxieTime = results.tuoxie.seconds;
+      let winner = null;
+      if (kaikaiTime < tuoxieTime) winner = 'kaikai';
+      else if (tuoxieTime < kaikaiTime) winner = 'tuoxie';
+
+      const times = `凯凯用时 ${kaikaiTime} 秒｜拖鞋用时 ${tuoxieTime} 秒`;
+      const body = winner
+        ? `${PLAYERS[winner].name} 赢啦！${times}`
+        : `平局啦！${times}`;
+
+      return {
+        winner,
+        body,
+        seed: game.seed,
+        kaikaiTime,
+        tuoxieTime
+      };
+    }
+
+    function updateRaceDock() {
+      if (!game || game.mode !== 'battle' || !app.raceOwn) {
+        hideRaceDock();
+        return;
+      }
+
+      const settlement = getBattleSettlement();
+      dom.raceDock.hidden = false;
+      dom.raceDockText.textContent = settlement
+        ? (settlement.winner
+            ? `已结算 · ${PLAYERS[settlement.winner].name}赢啦`
+            : '已结算 · 平局')
+        : `本轮成绩 ${app.raceOwn.seconds} 秒 · 等待对手`;
+    }
+
+    function hideRaceDock() {
+      dom.raceDock.hidden = true;
+      dom.raceDockText.textContent = '';
+    }
+
+    /* =========================================================
+       13. 顶部 / 模式 / 种子 UI
+       ========================================================= */
+    function updateIdentityUI(lock = false) {
+      const shouldLock = lock || Boolean(game && game.started);
+      dom.identityButtons.forEach((button) => {
+        const selected = button.dataset.player === app.identity;
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        button.disabled = shouldLock;
+        button.title = shouldLock ? '本局已开始，重新开始后可切换身份' : '';
+      });
+    }
+
+    function updateSeedUI() {
+      const isBattle = app.mode === 'battle';
+      dom.activeSeed.textContent = isBattle && app.battleSeed ? app.battleSeed : '—';
+      dom.copySeedBtn.disabled = !(isBattle && app.battleSeed);
+      dom.generateSeedBtn.disabled = !isBattle;
+      dom.seedInput.disabled = !isBattle;
+      dom.joinSeedBtn.disabled = !isBattle;
+    }
+
+    function setIdentity(player) {
+      if (!PLAYER_KEYS.includes(player)) return;
+      if (game && game.started) {
+        showToast('本局已经开始啦，重新开始后再切换身份');
+        return;
+      }
+      app.identity = player;
+      updateIdentityUI();
+      updateRaceDock();
+      if (game && game.mode === 'battle') {
+        // 身份变了以后，之前残留的对手成绩不再适用
+        app.raceOpponent = null;
+        hideRaceDock();
+        postRaceQuery();
+      }
+      announce(`当前身份：${PLAYERS[player].name}`);
+    }
+
+    function clearSeedFeedback() {
+      dom.seedFeedback.hidden = true;
+      dom.seedFeedback.textContent = '';
+      dom.seedInput.classList.remove('is-error');
+    }
+
+    function showSeedFeedback(message) {
+      dom.seedFeedback.hidden = false;
+      dom.seedFeedback.textContent = message;
+      dom.seedInput.classList.add('is-error');
+    }
+
+    function clearCustomError() {
+      dom.customError.hidden = true;
+      dom.customError.textContent = '';
+      [dom.rowsInput, dom.colsInput, dom.minesInput].forEach((input) => {
+        input.classList.remove('is-invalid');
+        input.removeAttribute('aria-invalid');
+      });
+    }
+
+    function showCustomError(message, input) {
+      clearCustomError();
+      dom.customError.hidden = false;
+      dom.customError.textContent = message;
+      if (input) {
+        input.classList.add('is-invalid');
+        input.setAttribute('aria-invalid', 'true');
+        input.focus();
+      }
+    }
+
+    function validateCustomSettings() {
+      const rows = Number(dom.rowsInput.value);
+      const cols = Number(dom.colsInput.value);
+      const mines = Number(dom.minesInput.value);
+
+      if (!Number.isInteger(rows) || rows < LIMITS.minRows || rows > LIMITS.maxRows) {
+        showCustomError(`行数需要在 ${LIMITS.minRows}–${LIMITS.maxRows} 之间`, dom.rowsInput);
+        return null;
+      }
+      if (!Number.isInteger(cols) || cols < LIMITS.minCols || cols > LIMITS.maxCols) {
+        showCustomError(`列数需要在 ${LIMITS.minCols}–${LIMITS.maxCols} 之间`, dom.colsInput);
+        return null;
+      }
+
+      const maxMines = rows * cols - 1;
+      if (!Number.isInteger(mines) || mines < LIMITS.minMines || mines > maxMines) {
+        showCustomError(`这个棋盘的地雷数需要在 1–${maxMines} 之间`, dom.minesInput);
+        return null;
+      }
+
+      return { rows, cols, mines };
+    }
+
+    function syncCustomInputs(config) {
+      dom.rowsInput.value = String(config.rows);
+      dom.colsInput.value = String(config.cols);
+      dom.minesInput.value = String(config.mines);
+    }
+
+    /* =========================================================
+       14. 弹窗
+       ========================================================= */
+    function openBattleResultModal() {
+      if (!game || game.mode !== 'battle' || !app.raceOwn) return;
+      openModal('battle');
+    }
+
+    function openModal(type) {
+      if (!game) return;
+
+      window.clearTimeout(app.modalShowTimer);
+      app.modalShowTimer = null;
+      app.modalType = type;
+      app.modalPreviousFocus = document.activeElement;
+      renderModalContent();
+
+      dom.modal.hidden = false;
+      document.body.classList.add('has-modal');
+      dom.page.inert = true;
+
+      if (type === 'solo-win' || type === 'battle') {
+        spawnModalHearts();
+      } else {
+        dom.modalHearts.innerHTML = '';
+      }
+
+      window.clearTimeout(app.modalHideTimer);
+      void dom.modal.offsetWidth;
+      dom.modal.classList.add('is-open');
+      app.modalOpen = true;
+
+      window.setTimeout(() => {
+        if (app.modalOpen) dom.modalPrimary.focus({ preventScroll: true });
+      }, 150);
+    }
+
+    function renderModalContent() {
+      const type = app.modalType;
+      dom.raceExchange.hidden = true;
+      dom.exchangeError.hidden = true;
+
+      if (type === 'lose') {
+        dom.modalCard.classList.remove('is-win');
+        dom.modalCard.classList.add('is-lose');
+        dom.modalMascot.innerHTML = ICON_MARKUP.panda('modal-art');
+        dom.modalTitle.textContent = 'ohno💥踩到地雷啦！';
+        dom.modalDesc.textContent = '这个不舒服惹555';
+        dom.modalNote.textContent = '';
+        dom.modalPrimary.textContent = '重新试试';
+        return;
+      }
+
+      dom.modalCard.classList.add('is-win');
+      dom.modalCard.classList.remove('is-lose');
+      dom.modalMascot.innerHTML = ICON_MARKUP.heart('modal-art');
+
+      if (type === 'solo-win') {
+        dom.modalTitle.textContent = '太棒啦！🎉';
+        dom.modalDesc.textContent = `这一局全部清空啦，用时 ${game.seconds} 秒。整片雷区都变得软乎乎啦！`;
+        dom.modalNote.textContent = '可以再来一局哦';
+        dom.modalPrimary.textContent = '再来一局';
+        return;
+      }
+
+      if (type === 'battle') {
+        dom.modalTitle.textContent = '太棒啦！🎉';
+        dom.modalPrimary.textContent = '再来一局';
+
+        const settlement = getBattleSettlement();
+        if (settlement) {
+          // 最终对战结算：严格使用约定文案
+          dom.modalDesc.textContent = settlement.body;
+          dom.modalNote.textContent = `本局种子：${settlement.seed}，可以再来一局哦`;
+          dom.raceExchange.hidden = true;
+          return;
+        }
+
+        // 只有自己完成、对手成绩还没到时，显示交换战绩码的区域。
+        dom.modalDesc.textContent =
+          `你用时 ${app.raceOwn.seconds} 秒完成啦！把战绩码发给${otherPlayerName()}，` +
+          `等 TA 也完成后，粘贴 TA 的战绩码就能自动判定赢家。`;
+        dom.modalNote.textContent = `本局种子：${game.seed}，可以再来一局哦`;
+        dom.raceExchange.hidden = false;
+        dom.myRaceCode.textContent = app.raceOwn.code;
+        dom.opponentCodeInput.value = '';
+        dom.exchangeError.hidden = true;
+      }
+    }
+
+    function renderBattleModalContent() {
+      if (app.modalType !== 'battle') return;
+      renderModalContent();
+      // 对手成绩到达后，如果交换框被隐藏，焦点回到主按钮。
+      if (!dom.raceExchange.hidden) return;
+      if (app.modalOpen) {
+        dom.modalPrimary.focus({ preventScroll: true });
+      }
+    }
+
+    function closeModal({ immediate = false, restoreFocus = true } = {}) {
+      if (!app.modalOpen && dom.modal.hidden) return;
+
+      window.clearTimeout(app.modalHideTimer);
+      app.modalOpen = false;
+      dom.modal.classList.remove('is-open');
+      document.body.classList.remove('has-modal');
+      dom.page.inert = false;
+      app.modalType = null;
+
+      if (immediate) {
+        dom.modal.hidden = true;
+        dom.modalHearts.innerHTML = '';
+      } else {
+        app.modalHideTimer = window.setTimeout(() => {
+          dom.modal.hidden = true;
+          dom.modalHearts.innerHTML = '';
+        }, 320);
+      }
+
+      if (restoreFocus) {
+        const target = app.modalPreviousFocus && document.contains(app.modalPreviousFocus)
+          ? app.modalPreviousFocus
+          : dom.resetBtn;
+        window.setTimeout(() => {
+          if (target && typeof target.focus === 'function') {
+            target.focus({ preventScroll: true });
+          }
+        }, immediate ? 0 : 330);
+      }
+      app.modalPreviousFocus = null;
+    }
+
+    function trapModalFocus(event) {
+      if (!app.modalOpen) return;
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusables = Array.from(
+        dom.modal.querySelectorAll('button:not([disabled]), input:not([disabled])')
+      ).filter((el) => el.offsetParent !== null);
+
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    function submitOpponentCode() {
+      const parsed = decodeRaceResult(dom.opponentCodeInput.value);
+      if (!parsed) {
+        dom.exchangeError.hidden = false;
+        dom.exchangeError.textContent = '战绩码格式不对，请检查后重试';
+        return;
+      }
+      if (parsed.seed !== game.seed) {
+        dom.exchangeError.hidden = false;
+        dom.exchangeError.textContent = '这颗种子不是本局的哦';
+        return;
+      }
+      if (parsed.player === app.identity) {
+        dom.exchangeError.hidden = false;
+        dom.exchangeError.textContent = '这是你自己的战绩码呀';
+        return;
+      }
+
+      dom.exchangeError.hidden = true;
+      const accepted = acceptOpponentResult(parsed);
+      if (!accepted) {
+        dom.exchangeError.hidden = false;
+        dom.exchangeError.textContent = '这边暂时无法识别这个战绩码';
+        return;
+      }
+
+      renderBattleModalContent();
+      showToast('对手成绩已录入，已自动结算');
+      announce('对手成绩已录入，对战结果已经自动结算。');
+    }
+
+    /* =========================================================
+       15. 爱心动画 & 复制
+       ========================================================= */
+    function spawnModalHearts() {
+      dom.modalHearts.innerHTML = '';
+      if (reducedMotion.matches) return;
+
+      const colors = ['#d9a6a0', '#b7d2df', '#e2b9b2', '#c4dae6'];
+      for (let i = 0; i < 14; i += 1) {
+        const heart = document.createElement('span');
+        const duration = 5 + Math.random() * 4;
+        heart.className = 'modal-heart';
+        heart.style.left = `${4 + Math.random() * 90}%`;
+        heart.style.width = `${10 + Math.random() * 12}px`;
+        heart.style.height = `${10 + Math.random() * 12}px`;
+        heart.style.color = colors[i % colors.length];
+        // 负延迟让爱心在弹窗出现时就已经分布在空中，不会一开始空空的。
+        heart.style.animationDelay = `-${(Math.random() * duration).toFixed(2)}s`;
+        heart.style.animationDuration = `${duration}s`;
+        heart.style.setProperty('--heart-drift', `${Math.random() * 40 - 20}px`);
+        heart.innerHTML = ICON_MARKUP.heart('heart-svg');
+        dom.modalHearts.appendChild(heart);
+      }
+    }
+
+    function spawnFallingHearts() {
+      dom.fallingHearts.innerHTML = '';
+      if (reducedMotion.matches) return;
+
+      const colors = ['rgba(174, 206, 223, .8)', 'rgba(226, 181, 185, .72)', 'rgba(201, 222, 234, .66)'];
+      for (let i = 0; i < 18; i += 1) {
+        const heart = document.createElement('span');
+        heart.className = 'falling-heart';
+        heart.style.left = `${3 + Math.random() * 94}%`;
+        heart.style.width = `${12 + Math.random() * 15}px`;
+        heart.style.height = `${12 + Math.random() * 15}px`;
+        heart.style.color = colors[i % colors.length];
+        heart.style.animationDelay = `${i < 5 ? Math.random() * .35 : Math.random() * 3.5}s`;
+        heart.style.animationDuration = `${7 + Math.random() * 5}s`;
+        heart.style.setProperty('--heart-drift', `${Math.random() * 100 - 50}px`);
+        heart.innerHTML = ICON_MARKUP.heart('heart-svg');
+        dom.fallingHearts.appendChild(heart);
+      }
+    }
+
+    function clearFallingHearts() {
+      dom.fallingHearts.innerHTML = '';
+    }
+
+    async function copyText(text) {
+      if (!text) return false;
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (error) {
+        // 某些内嵌 iframe / file:// 环境下 Clipboard API 不可用，走兜底。
+      }
+
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const succeeded = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return succeeded;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    /* =========================================================
+       16. 键盘 & 触屏长按
+       ========================================================= */
+    function clearLongPress() {
+      if (pressTimer) {
+        window.clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+      if (pressedCell) {
+        pressedCell.classList.remove('is-holding');
+        pressedCell = null;
+      }
+    }
+
+    function focusCell(index) {
+      const target = cells[index];
+      if (!target) return;
+      cells.forEach((cell) => { cell.tabIndex = -1; });
+      target.tabIndex = 0;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    /* =========================================================
+       17. 事件绑定
+       ========================================================= */
+    function bindEvents() {
+      // 模式切换
+      document.querySelectorAll('.mode-tab').forEach((tab) => {
+        tab.addEventListener('click', () => switchMode(tab.dataset.mode));
+      });
+
+      // 身份选择
+      dom.identityButtons.forEach((button) => {
+        button.addEventListener('click', () => setIdentity(button.dataset.player));
+      });
+
+      // 生成种子 / 复制种子 / 加入对局
+      dom.generateSeedBtn.addEventListener('click', () => {
+        const seed = generateSeedCode();
+        clearSeedFeedback();
+        app.mode = 'battle';
+        initNewGame({ mode: 'battle', ...BATTLE_GAME, seed });
+        showToast(`新种子 ${seed} 已生成`);
+      });
+
+      dom.copySeedBtn.addEventListener('click', async () => {
+        if (!app.battleSeed) return;
+        const copied = await copyText(app.battleSeed);
+        showToast(copied
+          ? `种子 ${app.battleSeed} 已复制，快发给${otherPlayerName()}吧`
+          : `复制失败，请手动记下种子：${app.battleSeed}`);
+      });
+
+      dom.seedJoinForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const seed = normalizeSeed(dom.seedInput.value);
+        if (!seed) {
+          showSeedFeedback('种子码需要是 4–12 位字母或数字');
+          dom.seedInput.focus();
+          return;
+        }
+        clearSeedFeedback();
+        dom.seedInput.value = seed;
+        app.mode = 'battle';
+        initNewGame({ mode: 'battle', ...BATTLE_GAME, seed });
+        showToast(`已加入种子 ${seed} 的对局`);
+      });
+
+      dom.seedInput.addEventListener('input', clearSeedFeedback);
+
+      // 对战结果重新打开
+      dom.openRaceResultBtn.addEventListener('click', openBattleResultModal);
+
+      // 重新开始：单机随机新盘；对战重开同一颗种子
+      dom.resetBtn.addEventListener('click', () => {
+        if (!game) return;
+        if (game.mode === 'battle') {
+          initNewGame({ mode: 'battle', ...BATTLE_GAME, seed: game.seed });
+        } else {
+          initNewGame({ mode: 'solo', rows: game.rows, cols: game.cols, mines: game.mineCount });
+        }
+      });
+
+      // 单机自定义棋盘
+      dom.customForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const config = validateCustomSettings();
+        if (!config) return;
+
+        app.soloConfig = config;
+        app.mode = 'solo';
+        initNewGame({ mode: 'solo', ...config });
+      });
+
+      [dom.rowsInput, dom.colsInput, dom.minesInput].forEach((input) => {
+        input.addEventListener('input', () => {
+          input.classList.remove('is-invalid');
+          input.removeAttribute('aria-invalid');
+          if (!dom.customError.hidden) clearCustomError();
+        });
+      });
+
+      // 棋盘点击 / 右键 / 双击
+      dom.board.addEventListener('click', (event) => {
+        if (!game || game.over) return;
+        if (Date.now() < suppressClickUntil) return;
+        const target = event.target.closest('.cell');
+        if (!target) return;
+        revealCell(Number(target.dataset.index));
+      });
+
+      dom.board.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        if (!game || game.over) return;
+        if (Date.now() < suppressContextUntil) return;
+        const target = event.target.closest('.cell');
+        if (!target) return;
+        toggleFlag(Number(target.dataset.index));
+      });
+
+      dom.board.addEventListener('dblclick', (event) => {
+        if (!game || game.over) return;
+        const target = event.target.closest('.cell');
+        if (!target) return;
+        event.preventDefault();
+        chordReveal(Number(target.dataset.index));
+      });
+
+      // roving tabindex
+      dom.board.addEventListener('focusin', (event) => {
+        const target = event.target.closest('.cell');
+        if (!target) return;
+        cells.forEach((cell) => { cell.tabIndex = -1; });
+        target.tabIndex = 0;
+      });
+
+      // 键盘导航：方向键移动，F 放/收小拖鞋，Enter/Space 翻开。
+      dom.board.addEventListener('keydown', (event) => {
+        if (!game) return;
+        const target = event.target.closest('.cell');
+        if (!target) return;
+
+        const index = Number(target.dataset.index);
+        const row = Math.floor(index / game.cols);
+        const col = index % game.cols;
+        let nextIndex = null;
+
+        switch (event.key) {
+          case 'ArrowUp':
+            nextIndex = row > 0 ? index - game.cols : index;
+            break;
+          case 'ArrowDown':
+            nextIndex = row < game.rows - 1 ? index + game.cols : index;
+            break;
+          case 'ArrowLeft':
+            nextIndex = col > 0 ? index - 1 : index;
+            break;
+          case 'ArrowRight':
+            nextIndex = col < game.cols - 1 ? index + 1 : index;
+            break;
+          case 'Home':
+            nextIndex = row * game.cols;
+            break;
+          case 'End':
+            nextIndex = row * game.cols + game.cols - 1;
+            break;
+          case 'f':
+          case 'F':
+            event.preventDefault();
+            if (!event.ctrlKey && !event.metaKey && !event.altKey) toggleFlag(index);
+            return;
+          default:
+            return;
+        }
+
+        event.preventDefault();
+        focusCell(nextIndex);
+      });
+
+      // 触屏长按：放 / 收小拖鞋
+      dom.board.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch') return;
+        suppressContextUntil = Date.now() + 1000;
+        clearLongPress();
+
+        if (!game || game.over || event.button !== 0) return;
+        const target = event.target.closest('.cell');
+        if (!target) return;
+
+        const index = Number(target.dataset.index);
+        const cell = game.grid[index];
+        if (!cell || cell.revealed) return;
+
+        pressedCell = target;
+        pressStartX = event.clientX;
+        pressStartY = event.clientY;
+        pressedCell.classList.add('is-holding');
+
+        pressTimer = window.setTimeout(() => {
+          pressTimer = null;
+          if (!game || game.over) return;
+          suppressClickUntil = Date.now() + 800;
+          toggleFlag(index);
+          if (navigator.vibrate) navigator.vibrate(10);
+        }, 420);
+      });
+
+      dom.board.addEventListener('pointermove', (event) => {
+        if (!pressedCell) return;
+        if (
+          Math.abs(event.clientX - pressStartX) > 9 ||
+          Math.abs(event.clientY - pressStartY) > 9
+        ) {
+          clearLongPress();
+        }
+      });
+
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => {
+        dom.board.addEventListener(type, clearLongPress);
+      });
+
+      // 弹窗关闭 / Escape / 主按钮
+      dom.modalClose.addEventListener('click', () => closeModal());
+      dom.modal.querySelector('[data-modal-close]').addEventListener('click', () => closeModal());
+
+      dom.modalPrimary.addEventListener('click', () => {
+        if (!game) return;
+        if (game.mode === 'battle') {
+          const seed = game.seed;
+          initNewGame({ mode: 'battle', ...BATTLE_GAME, seed });
+        } else {
+          initNewGame({ mode: 'solo', rows: game.rows, cols: game.cols, mines: game.mineCount });
+        }
+        dom.resetBtn.focus({ preventScroll: true });
+      });
+
+      dom.copyRaceCodeBtn.addEventListener('click', async () => {
+        if (!app.raceOwn) return;
+        const copied = await copyText(app.raceOwn.code);
+        showToast(copied
+          ? '战绩码已复制，快发给TA'
+          : `复制失败，请手动复制：${app.raceOwn.code}`);
+      });
+
+      dom.submitRaceCodeBtn.addEventListener('click', submitOpponentCode);
+      dom.opponentCodeInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          submitOpponentCode();
+        }
+      });
+      dom.opponentCodeInput.addEventListener('input', () => {
+        dom.exchangeError.hidden = true;
+      });
+
+      // 全局键盘 & 弹窗焦点循环
+      document.addEventListener('keydown', (event) => {
+        trapModalFocus(event);
+      });
+
+      // 尺寸变化
+      if ('ResizeObserver' in window) {
+        const observer = new ResizeObserver(() => {
+          const width = dom.boardShell.clientWidth;
+          if (Math.abs(width - lastShellWidth) > 1) {
+            lastShellWidth = width;
+            if (resizeFrame) cancelAnimationFrame(resizeFrame);
+            resizeFrame = requestAnimationFrame(fitBoard);
+          }
+        });
+        observer.observe(dom.boardShell);
+      } else {
+        window.addEventListener('resize', () => {
+          if (resizeFrame) cancelAnimationFrame(resizeFrame);
+          resizeFrame = requestAnimationFrame(fitBoard);
+        });
+      }
+
+      // 页面刷新前关闭广播频道
+      window.addEventListener('beforeunload', () => {
+        if (app.channel) {
+          try { app.channel.close(); } catch (error) { /* ignore */ }
+        }
+      });
+    }
+
+    /* =========================================================
+       18. 启动
+       ========================================================= */
+    function boot() {
+      // 初始化默认身份按钮状态
+      updateIdentityUI();
+      syncCustomInputs(app.soloConfig);
+      initRaceChannel();
+      bindEvents();
+
+      // 默认进入单机模式，20×20 / 80 雷
+      initNewGame({ mode: 'solo', ...app.soloConfig });
+    }
+
+    boot();
+  })();
+  </script>
+</body>
+</html>
