@@ -1,4 +1,4 @@
-# 凯凯 × 拖鞋 的专属扫雷乐园
+# 凯神的扫雷乐园
 
 **线上地址：** https://yscc666.github.io/kaikai-tuoxie-minesweeper/
 
@@ -31,7 +31,7 @@
 ```html
 <iframe
   src="https://你的用户名.github.io/你的仓库名/"
-  title="凯凯 × 拖鞋 的专属扫雷乐园"
+  title="凯神的扫雷乐园"
   style="width: 100%; max-width: 920px; height: 1200px; border: 0; border-radius: 28px;"
   loading="lazy"
 ></iframe>
