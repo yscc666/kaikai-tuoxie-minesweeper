@@ -1,10 +1,14 @@
 # 凯凯 × 拖鞋 的专属扫雷乐园
 
-一个单文件、纯前端的扫雷小游戏，可以直接部署到 GitHub Pages，也可以嵌进个人网站的 iframe。
+**线上地址：** https://yscc666.github.io/kaikai-tuoxie-minesweeper/
+
+一个单文件、纯前端的扫雷小游戏，已经部署到 GitHub Pages，也可以嵌进个人网站的 iframe。
 
 - 默认棋盘：**20 × 20，80 颗雷**
 - 单机模式：随机雷盘，第一格安全
 - 对战模式：共享种子生成完全相同的雷盘，各自计时
+- 奶白 × 浅雾蓝 × 樱花粉的柔和配色
+- 小熊猫 = 地雷，小拖鞋 = 标记
 - 无框架、无 CDN、无外部字体、无广告、无后端
 - 不使用 localStorage / sessionStorage，不保存游戏数据
 
@@ -12,13 +16,13 @@
 
 双击 `index.html`，用浏览器打开即可。
 
-## 部署到 GitHub Pages
+## GitHub Pages
 
-1. 新建一个 GitHub 仓库。
-2. 把 `index.html` 放到仓库根目录。
-3. 打开仓库的 **Settings → Pages**。
-4. Source 选择 **Deploy from a branch**，Branch 选择 `main` 和 `/ (root)`，保存。
-5. 等 GitHub Pages 构建完成后，访问生成的网址。
+当前版本已经发布在 GitHub Pages。若之后更新了 `index.html`：
+
+1. 把新的 `index.html` 放到仓库根目录。
+2. 仓库的 **Settings → Pages** 保持 **Deploy from a branch**，Branch 为 `main`，目录为 `/ (root)`。
+3. 等待 Pages 重新构建，刷新线上网址即可。
 
 ## 嵌入个人网站
 
